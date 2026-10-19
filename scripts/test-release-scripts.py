@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+import hashlib
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+class ReleaseTests(unittest.TestCase):
+    def test_consistent_versions(self):
+        result = subprocess.run([sys.executable, ROOT / "scripts/check-release-version.py"], capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_wrong_tag_is_rejected(self):
+        result = subprocess.run([sys.executable, ROOT / "scripts/check-release-version.py", "v999.0.0"], capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_package_manifest_and_no_clobber(self):
+        import json
+        version = json.loads((ROOT / "apps/desktop/package.json").read_text())["version"]
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            source, destination = base / "source", base / "release"
+            source.mkdir()
+            filename = f"reelio-{version}-1-x86_64.pkg.tar.zst"
+            (source / filename).write_bytes(b"package")
+            (source / "wrong-version.deb").write_bytes(b"ignore")
+            command = [sys.executable, ROOT / "scripts/collect-release-assets.py", source, destination]
+            result = subprocess.run(command, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((destination / "SHA256SUMS").read_text(), f"{hashlib.sha256(b'package').hexdigest()}  {filename}\n")
+            self.assertEqual(len(list(destination.iterdir())), 2)
+            result = subprocess.run(command, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual((destination / filename).read_bytes(), b"package")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,22 @@
+name: Dependency Audit
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '18 7 * * 1'
+  pull_request:
+    paths: ['Cargo.lock', 'apps/desktop/package-lock.json']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
+      - run: npm ci --prefix apps/desktop
+      - run: npm audit --prefix apps/desktop --audit-level=high

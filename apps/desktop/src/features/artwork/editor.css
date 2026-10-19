@@ -1,0 +1,405 @@
+.artwork-panel {
+  --art-green: #64cba1;
+  --art-cyan: #62bfd4;
+  --art-amber: #e5b968;
+}
+[data-theme="light"] .artwork-panel {
+  --art-green: #187e58;
+  --art-cyan: #18788e;
+  --art-amber: #93610c;
+}
+.artwork-panel .artwork-tools button:has(> svg:only-child),
+.aspect-toggle {
+  min-width: 32px;
+  padding: 6px;
+}
+.aspect-toggle {
+  margin: 8px 0;
+  color: var(--muted);
+}
+.aspect-toggle[aria-pressed="true"],
+.artwork-filter[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--selection);
+  color: var(--accent);
+}
+.artwork-filter {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  margin: 0 5px 10px 0;
+  width: 82px;
+  height: auto;
+  vertical-align: top;
+  font-size: 10px;
+}
+.artwork-filter img {
+  width: 100%;
+  height: 55px;
+  object-fit: contain;
+  border-radius: 3px;
+}
+.artwork-filter span {
+  min-height: 24px;
+  line-height: 12px;
+}
+.artwork-apply-feedback {
+  padding: 9px 12px;
+  border: 1px solid var(--art-green);
+  border-radius: 5px;
+  color: var(--art-green);
+}
+.workspace-feedback {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+}
+.chapter-time-error {
+  color: var(--red);
+  font-size: 11px;
+}
+.preview-error-detail {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.preview-retry {
+  margin-bottom: 10px;
+}
+.artwork-panel {
+  position: relative;
+}
+.artwork-panel.has-image {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.artwork-panel > .section-heading {
+  flex: none;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+.artwork-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+.artwork-info {
+  display: inline-flex;
+  min-width: 16px;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  vertical-align: middle;
+}
+.artwork-source-actions {
+  display: flex;
+  gap: 6px;
+}
+.artwork-source-actions button {
+  padding: 5px 8px;
+  font-size: 11px;
+}
+.artwork-panel.has-image .artwork-source-browser {
+  position: absolute;
+  inset: 40px 0 0;
+  z-index: 30;
+  overflow: auto;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.artwork-source-done {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin-bottom: 8px;
+}
+.artwork-editor-grid {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(290px, 360px) minmax(0, 1fr);
+  gap: 10px;
+}
+.artwork-editor-grid > figure {
+  margin: 0;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background-color: var(--preview);
+  background-image: conic-gradient(
+    var(--border) 25%,
+    transparent 0 50%,
+    var(--border) 0 75%,
+    transparent 0
+  );
+  background-size: 20px 20px;
+}
+.artwork-editor-grid figcaption {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 10px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  background: var(--panel);
+}
+.artwork-image-area {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.artwork-editor-grid .cover-crop-stage {
+  flex: none;
+  line-height: 0;
+}
+.artwork-editor-grid .cover-crop-stage > img {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+}
+.artwork-editor-grid > figure:first-child .artwork-image-area {
+  padding: 7px;
+  box-sizing: border-box;
+}
+.artwork-editor-grid .artwork-control-panel > .artwork-source-actions {
+  margin-bottom: 5px;
+}
+.artwork-image-area > .cover-result {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  object-fit: contain;
+}
+.artwork-editor-grid .artwork-control-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.artwork-editor-grid .artwork-control-panel .artwork-tools {
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin: 0 0 5px;
+}
+.artwork-editor-grid .artwork-control-panel .artwork-tools > button {
+  flex: none;
+  min-width: 28px;
+  height: 28px;
+  padding: 4px;
+}
+.artwork-editor-grid .artwork-control-panel .artwork-tools > .aspect-toggle {
+  margin: 0;
+}
+.artwork-editor-grid .artwork-control-panel .artwork-controls {
+  display: block;
+  margin: 0;
+}
+.artwork-editor-grid .artwork-control-panel fieldset {
+  min-width: 0;
+  padding: 6px;
+  margin: 0 0 5px;
+}
+.artwork-editor-grid .artwork-control-panel legend {
+  font-size: 10px;
+  padding: 0 3px;
+}
+.artwork-editor-grid .artwork-control-panel label {
+  min-width: 0;
+  gap: 3px;
+  margin: 0;
+  font-size: 10px;
+}
+.artwork-editor-grid .artwork-control-panel input[type="number"] {
+  min-width: 0;
+  width: 100%;
+  height: 26px;
+  padding: 3px 5px;
+}
+.artwork-number-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 4px 0;
+}
+.artwork-filter-row {
+  display: flex;
+  gap: 4px;
+}
+.artwork-filter-row .artwork-filter {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  margin: 0;
+  padding: 3px;
+  gap: 2px;
+  font-size: 9px;
+}
+.artwork-filter-row .artwork-filter img {
+  height: 28px;
+}
+.artwork-filter-row .artwork-filter span {
+  min-height: 12px;
+  line-height: 11px;
+}
+.artwork-resize-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto auto;
+  gap: 5px;
+  align-items: end;
+}
+.artwork-resize-row > label {
+  order: 1;
+}
+.artwork-resize-row > .aspect-toggle {
+  order: 2;
+  margin: 0;
+  height: 26px;
+  min-width: 26px;
+  padding: 4px;
+}
+.artwork-resize-row > button:last-child {
+  order: 3;
+  grid-column: auto;
+  height: 26px;
+  min-width: 26px;
+  padding: 4px;
+  font-size: 10px;
+}
+.artwork-editor-grid .artwork-control-panel .artwork-apply-tools {
+  flex-wrap: wrap;
+}
+.artwork-editor-grid .artwork-control-panel .artwork-apply-tools > button {
+  height: auto;
+  font-size: 10px;
+  padding: 5px 7px;
+}
+.artwork-editor-grid .artwork-control-panel .artwork-apply-feedback {
+  padding: 5px;
+  margin: 4px 0;
+  font-size: 10px;
+}
+.artwork-panel .cover-crop-selection {
+  pointer-events: auto;
+  touch-action: none;
+  cursor: move;
+}
+.artwork-panel .crop-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  min-height: 10px;
+  min-width: 10px;
+  padding: 0;
+  border: 1px solid white;
+  border-radius: 2px;
+  background: var(--accent);
+  z-index: 2;
+}
+.crop-nw {
+  left: -5px;
+  top: -5px;
+  cursor: nwse-resize;
+}
+.crop-n {
+  left: calc(50% - 5px);
+  top: -5px;
+  cursor: ns-resize;
+}
+.crop-ne {
+  right: -5px;
+  top: -5px;
+  cursor: nesw-resize;
+}
+.crop-e {
+  right: -5px;
+  top: calc(50% - 5px);
+  cursor: ew-resize;
+}
+.crop-se {
+  right: -5px;
+  bottom: -5px;
+  cursor: nwse-resize;
+}
+.crop-s {
+  left: calc(50% - 5px);
+  bottom: -5px;
+  cursor: ns-resize;
+}
+.crop-sw {
+  left: -5px;
+  bottom: -5px;
+  cursor: nesw-resize;
+}
+.crop-w {
+  left: -5px;
+  top: calc(50% - 5px);
+  cursor: ew-resize;
+}
+.artwork-panel .crop-clear {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 20px;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 2px;
+  z-index: 3;
+  background: var(--panel);
+  color: var(--text);
+}
+@container artwork-workspace (max-width: 800px) {
+  .artwork-editor-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  }
+  .artwork-editor-grid > figure:last-child {
+    grid-column: 1/-1;
+    min-height: 220px;
+  }
+  .artwork-panel.has-image {
+    height: auto;
+  }
+  .artwork-editor-grid > figure:first-child {
+    min-height: 280px;
+  }
+}
+@container artwork-workspace (max-width: 600px) {
+  .artwork-editor-grid {
+    display: flex;
+    flex-direction: column;
+  }
+  .artwork-editor-grid > figure {
+    min-height: 280px;
+    height: 320px;
+    flex: none;
+  }
+  .artwork-panel > .section-heading {
+    flex-wrap: wrap;
+  }
+  .artwork-editor-grid .artwork-control-panel {
+    overflow: visible;
+  }
+}

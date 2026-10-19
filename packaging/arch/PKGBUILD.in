@@ -1,0 +1,18 @@
+# Generated with checksums for the local release artifacts by scripts/package-arch.sh.
+pkgname=reelio
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='Local-first media container editor (developer preview)'
+arch=('x86_64')
+license=('MIT')
+depends=('ca-certificates' 'cairo' 'dbus' 'ffmpeg' 'gcc-libs' 'gdk-pixbuf2' 'glib2' 'glibc' 'gstreamer' 'gst-plugins-base' 'gst-plugins-good' 'gst-libav' 'gst-plugin-dav1d' 'gtk3' 'libsoup3' 'polkit' 'webkit2gtk-4.1')
+options=('!strip' '!debug')
+source=('reelio-desktop' 'reelio.desktop' 'reelio.png' 'LICENSE')
+sha256sums=(@CHECKSUMS@)
+
+package() {
+    install -Dm755 "$srcdir/reelio-desktop" "$pkgdir/usr/bin/reelio"
+    install -Dm644 "$srcdir/reelio.desktop" "$pkgdir/usr/share/applications/reelio.desktop"
+    install -Dm644 "$srcdir/reelio.png" "$pkgdir/usr/share/icons/hicolor/128x128/apps/reelio.png"
+    install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

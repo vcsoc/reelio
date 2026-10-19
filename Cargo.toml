@@ -1,0 +1,28 @@
+[workspace]
+members = ["crates/*", "apps/desktop/src-tauri"]
+default-members = ["crates/reelio-domain", "crates/reelio-ffmpeg", "crates/reelio-storage", "crates/reelio-application"]
+resolver = "2"
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+thiserror = "=2.0.21"
+uuid = { version = "=1.26.1", features = ["v4", "serde"] }
+tempfile = "=3.27.0"
+reelio-domain = { path = "crates/reelio-domain" }
+reelio-ffmpeg = { path = "crates/reelio-ffmpeg" }
+reelio-storage = { path = "crates/reelio-storage" }
+reelio-application = { path = "crates/reelio-application" }
+reelio-artwork = { path = "crates/reelio-artwork" }
+reelio-resources = { path = "crates/reelio-resources" }
+reelio-updates = { path = "crates/reelio-updates" }
+
+[profile.release]
+lto = "thin"
+strip = true
+codegen-units = 1

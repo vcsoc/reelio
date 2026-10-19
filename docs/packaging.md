@@ -1,0 +1,60 @@
+# Packaging And Release Qualification
+
+## Arch / Omarchy Package
+
+From the repository root:
+
+```sh
+./scripts/package-arch.sh
+```
+
+This builds the release application, stages checksummed local artifacts, and runs `makepkg` without sudo or dependency installation. Build prerequisites include the normal Tauri toolchain, `makepkg`, Python 3, and `desktop-file-validate`. To package an already verified release executable without rebuilding, use `./scripts/package-arch.sh --reuse-build`. A manual Cargo production build must enable the embedded frontend: `cargo build --locked --release -p reelio-desktop --features tauri/custom-protocol`; a bare Cargo release build can still use Tauri's development URL and is not an acceptable installed candidate.
+
+Output: `target/release/bundle/arch/reelio-0.2.0-1-x86_64.pkg.tar.zst` (unsigned developer-preview candidate; installation is separate from build verification).
+
+About Reelio stamps Cargo's version plus the tracked numeric package revision (`0.2.0-1`). Rebuild the native executable after changing `pkgrel`; `--reuse-build` is only for that matching build. The optional Linux About homepage action uses the desktop's `/usr/bin/xdg-open` (`xdg-utils`); absence/failure is shown in the dialog rather than silently navigating the editor. Windows/macOS browser launchers are implemented but not qualified by the Linux package checks.
+
+Install explicitly when ready:
+
+```sh
+sudo pacman -U target/release/bundle/arch/reelio-0.2.0-1-x86_64.pkg.tar.zst
+```
+
+The package includes `/usr/bin/reelio`, an application-menu entry, an icon and the MIT license. It declares FFmpeg, GTK/WebKitGTK, GStreamer/base/good/libav plus `gst-plugin-dav1d` for AV1 decoding, CA certificates and Polkit as required dependencies. Playback plugins are not optional: missing `autoaudiosink` previously caused a WebKit renderer abort. Preview is now gated on runtime checks, and supported Linux hosts offer an explicitly authorized fixed-allowlist component repair. It does not bundle FFmpeg or run custom privileged install scripts. This is an unsigned developer-preview package for x86_64 Arch-based systems. The earlier Pigeon-styled package and playback-dependency fix have been installed on this Omarchy host. The artwork/subtitle `0.1.0-3` update also passed archive checks, native startup/IPC, authorized installation and installed-file verification; see testing.md. Save open work before closing and reopening an already running instance after upgrade.
+
+## Tauri Bundle Builds
+
+```sh
+cd apps/desktop
+npm ci
+npm run tauri build -- --bundles deb   # Linux Debian candidate
+npm run tauri build -- --bundles nsis  # On Windows
+npm run tauri build -- --bundles dmg   # On macOS
+```
+
+Artifacts are under the workspace's `target/release/bundle/`. The Linux executable is `target/release/reelio-desktop`. Build Linux release candidates on the oldest supported distribution: a `.deb` assembled on a newer/non-Debian development host is only a packaging check, not proof of ABI compatibility with older Debian/Ubuntu systems. Do not execute a foreign-platform build command on Linux and infer that the target platform works. The repository's GitHub workflow can build unsigned candidates on each OS; it has not been run as part of local development.
+
+FFmpeg/FFprobe are external system dependencies. The `.deb` is not a bundled media backend distribution. The Arch package declares the system media/playback/certificate packages as mandatory dependencies; pacman resolves them during installation. Debian bundle metadata declares the corresponding FFmpeg, GStreamer, certificate and authorization packages. Supported Arch-family and Debian/Ubuntu hosts also offer native-confirmed repair through the system package manager. Other platform bundles do not yet provide a qualified backend-install guarantee; Windows/macOS backend bundling and native acceptance remain release work. For source builds or custom backends, use a maintained trusted distribution and configure absolute paths in Preferences if needed. No package asks for elevated media-processing privileges or promises that a particular codec build is legally redistributable.
+
+## GitHub Release Updates
+
+The desktop Project menu provides a manual stable-release checker and verified package downloads; it never installs automatically. See [updates](updates.md) for version comparison, platform selection, transfer limits and checksum/signing distinctions. `scripts/check-release-version.py` rejects mismatched version files/tags; `scripts/collect-release-assets.py` produces version-matching packages plus SHA256SUMS without clobbering. Manual release-workflow dispatch uploads candidates; an explicitly pushed version tag publishes only after all package jobs pass. This workflow has not been qualified on every platform locally.
+
+## Required Manual Native Acceptance
+
+Use synthetic media first; retain source hashes and backups.
+
+- Launch from an installed package, not only the development server; verify backend discovery and settings persistence.
+- Open multiple media files, add external audio/subtitles, drop files from the native file manager, and import a folder containing subdirectories. Confirm no recursive scan occurs.
+- Try unreadable/corrupt sources, missing/relinked project sources, duplicate paths, Unicode names, spaces and shell metacharacters.
+- Inspect tracks and original metadata; reorder tracks and verify actual exported stream order. Test one default track per type and both forced/commentary/accessibility flags.
+- Edit supported metadata/chapters, undo/redo, save/open the project, and confirm unchanged source hashes.
+- Export MKV and MP4/M4V, approve subtitle conversion, probe the result, play it with independent players and compare stream hashes where possible.
+- Cancel while processing and during verification. Confirm no final destination and no normal-operation temporary files remain.
+- Create a destination while FFmpeg is running. Confirm finalization refuses to overwrite it.
+- Test disk full, read-only directory, disconnected source, permission changes, source changes during processing and unexpected app termination. Inspect interrupted jobs and orphan temporary files before retrying.
+- Verify single-instance behavior, active-job close protection, restarts, high-DPI scaling, system/light/dark appearance, keyboard-only controls and screen-reader announcements.
+
+## Release Blockers
+
+Complete the unimplemented product scope as required by the release contract. Run generated-media tests on Windows/macOS/Linux, qualify codecs and metadata adapters, review dependencies and licenses, establish private vulnerability reporting, and add signing/notarization. Production releases need a documented update strategy and rollback/recovery policy. A successfully built unsigned candidate is not a production release.

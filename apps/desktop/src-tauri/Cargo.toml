@@ -1,0 +1,23 @@
+[package]
+name = "reelio-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[lib]
+name = "reelio_desktop"
+crate-type = ["staticlib", "cdylib", "rlib"]
+[build-dependencies]
+tauri-build = { version = "=2.6.3", features = [] }
+[dependencies]
+tauri = { version = "=2.11.5", features = ["protocol-asset"] }
+tauri-plugin-dialog = "=2.7.2"
+tauri-plugin-single-instance = "=2.4.4"
+reelio-domain.workspace = true
+reelio-application.workspace = true
+reelio-ffmpeg.workspace = true
+reelio-updates.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+tracing = "=0.1.44"
+tracing-subscriber = "=0.3.23"

@@ -1,0 +1,95 @@
+name: Release Packages
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            bundles: deb
+          - os: windows-latest
+            bundles: nsis
+          - os: macos-latest
+            bundles: dmg
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Validate tagged version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python ../../scripts/check-release-version.py "$RELEASE_TAG"
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf
+      - run: npm ci
+      - run: npm test
+      - run: npm run tauri build -- --bundles ${{ matrix.bundles }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reelio-unsigned-${{ matrix.os }}
+          path: target/release/bundle/
+          if-no-files-found: error
+  arch:
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    steps:
+      - run: pacman -Syu --noconfirm git rust nodejs npm python desktop-file-utils gtk3 webkit2gtk-4.1 librsvg libsoup3 openssl clang pkgconf ffmpeg gstreamer gst-plugins-base gst-plugins-good gst-libav gst-plugin-dav1d polkit
+      - uses: actions/checkout@v4
+      - name: Validate tagged version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python scripts/check-release-version.py "$RELEASE_TAG"
+      - name: Build as an unprivileged package user
+        run: |
+          useradd -m builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- bash -c 'cd "$1/apps/desktop" && npm ci && npm test && npm run tauri build -- --no-bundle' bash "$GITHUB_WORKSPACE"
+          runuser -u builder -- bash -c 'cd "$1" && ./scripts/package-arch.sh --reuse-build' bash "$GITHUB_WORKSPACE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reelio-unsigned-Arch
+          path: target/release/bundle/arch/*.pkg.tar.zst
+          if-no-files-found: error
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [package, arch]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: reelio-unsigned-*
+          path: target/downloaded-packages
+      - name: Verify version and create checksum manifest
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python scripts/check-release-version.py "$RELEASE_TAG"
+          python scripts/collect-release-assets.py target/downloaded-packages target/github-release
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: target/github-release/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          body: |
+            Unsigned developer-preview packages. Review release notes before installation.
+            SHA256SUMS verifies download integrity; it is not a code-signing certificate.

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Reelio
+Comment=Inspect, organize, and remux local media containers
+Exec=reelio
+Icon=reelio
+Terminal=false
+Categories=AudioVideo;Video;AudioVideoEditing;
+Keywords=Media;Video;Audio;Subtitles;Remux;
+StartupNotify=true
+StartupWMClass=app.reelio.desktop
