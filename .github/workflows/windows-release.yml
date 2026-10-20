@@ -1,0 +1,56 @@
+name: Windows Release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: Swatinem/rust-cache@v2
+      - name: Check release versions and manifest tooling
+        run: |
+          python scripts/check-release-version.py
+          python scripts/test-release-scripts.py
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Test frontend
+        working-directory: apps/desktop
+        run: npm test
+      - name: Build Windows x64 NSIS installer
+        working-directory: apps/desktop
+        run: npm run tauri build -- --ci --target x86_64-pc-windows-msvc --bundles nsis
+      - name: Verify Windows executable identity
+        shell: pwsh
+        run: |
+          $version = (Get-Content apps/desktop/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          $exe = Get-Item target/x86_64-pc-windows-msvc/release/reelio-desktop.exe
+          if ($exe.VersionInfo.ProductVersion -ne $version) { throw 'Executable product version mismatch' }
+          $bytes = [System.IO.File]::ReadAllBytes($exe.FullName)
+          if ($bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) { throw 'Missing PE DOS header' }
+          $offset = [BitConverter]::ToInt32($bytes, 0x3c)
+          if ([BitConverter]::ToUInt32($bytes, $offset) -ne 0x4550) { throw 'Missing PE signature' }
+          if ([BitConverter]::ToUInt16($bytes, $offset + 4) -ne 0x8664) { throw 'Executable is not Windows x64' }
+          Write-Output "Verified Windows x64 executable version $version"
+      - name: Collect version-matching installer and SHA256SUMS
+        run: python scripts/collect-release-assets.py target/x86_64-pc-windows-msvc/release/bundle/nsis target/windows-release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reelio-windows-x64
+          path: target/windows-release/*
+          if-no-files-found: error
+          retention-days: 90

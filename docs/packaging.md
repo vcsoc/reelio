@@ -36,6 +36,12 @@ Artifacts are under the workspace's `target/release/bundle/`. The Linux executab
 
 FFmpeg/FFprobe are external system dependencies. The `.deb` is not a bundled media backend distribution. The Arch package declares the system media/playback/certificate packages as mandatory dependencies; pacman resolves them during installation. Debian bundle metadata declares the corresponding FFmpeg, GStreamer, certificate and authorization packages. Supported Arch-family and Debian/Ubuntu hosts also offer native-confirmed repair through the system package manager. Other platform bundles do not yet provide a qualified backend-install guarantee; Windows/macOS backend bundling and native acceptance remain release work. For source builds or custom backends, use a maintained trusted distribution and configure absolute paths in Preferences if needed. No package asks for elevated media-processing privileges or promises that a particular codec build is legally redistributable.
 
+## Windows x64 Installer
+
+The manually dispatched **Windows Release** workflow (`windows-release.yml`) builds an unsigned NSIS installer on Windows Server 2022 with the MSVC x64 target. It checks version consistency, frontend tests, executable PE architecture/product version, then uploads the installer and `SHA256SUMS` as `reelio-windows-x64` (90-day CI artifact retention). Run with `gh workflow run windows-release.yml --ref main`. This does not push a release tag or publish a GitHub release.
+
+The installer is not Authenticode signed; Windows may show an unknown-publisher warning. WebView2 is managed by Tauri's installer; FFmpeg/FFprobe remain external requirements. Building and inspecting the Windows executable does not qualify interactive installer, playback or editing behavior on a Windows desktop.
+
 ## GitHub Release Updates
 
 The desktop Project menu provides a manual stable-release checker and verified package downloads; it never installs automatically. See [updates](updates.md) for version comparison, platform selection, transfer limits and checksum/signing distinctions. `scripts/check-release-version.py` rejects mismatched version files/tags; `scripts/collect-release-assets.py` produces version-matching packages plus SHA256SUMS without clobbering. Manual release-workflow dispatch uploads candidates; an explicitly pushed version tag publishes only after all package jobs pass. This workflow has not been qualified on every platform locally.
