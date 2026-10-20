@@ -21,6 +21,8 @@ jobs:
         with:
           python-version: '3.12'
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: Check release versions and manifest tooling
         run: |
           python scripts/check-release-version.py
