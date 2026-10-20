@@ -120,13 +120,20 @@ fn inspect_element(name: &str) -> bool {
         Ok(child) => child,
         Err(_) => return false,
     };
+    static APPIMAGE_INSPECTION_STARTED: AtomicBool = AtomicBool::new(false);
+    // A fresh AppImage registry scans bundled plugins; later probes stay tightly bounded.
+    let timeout = if std::env::var_os("APPDIR").is_some()
+        && !APPIMAGE_INSPECTION_STARTED.swap(true, Ordering::SeqCst)
+    {
+        Duration::from_secs(15)
+    } else {
+        Duration::from_secs(3)
+    };
     let started = Instant::now();
     loop {
         match child.try_wait() {
             Ok(Some(status)) => return status.success(),
-            Ok(None) if started.elapsed() < Duration::from_secs(3) => {
-                thread::sleep(Duration::from_millis(20))
-            }
+            Ok(None) if started.elapsed() < timeout => thread::sleep(Duration::from_millis(20)),
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();

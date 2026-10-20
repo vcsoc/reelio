@@ -87,8 +87,18 @@ fn executable(path: &Path) -> Result<PathBuf, String> {
         "Backend {name} was not found. Install FFmpeg or configure absolute executable paths."
     ))
 }
+fn host_backend_environment(command: &mut Command, appimage: bool) {
+    if appimage {
+        // Bundled media libraries are for WebKit/GStreamer, not the host's FFmpeg ABI.
+        command.env_remove("LD_LIBRARY_PATH");
+    }
+}
 fn command(path: &Path) -> Result<Command, String> {
     let mut c = Command::new(executable(path)?);
+    host_backend_environment(
+        &mut c,
+        std::env::var_os("APPDIR").is_some() || std::env::var_os("APPIMAGE").is_some(),
+    );
     c.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -1323,6 +1333,17 @@ impl Ffmpeg {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn appimage_backend_uses_host_libraries_without_changing_normal_commands() {
+        let mut bundled = Command::new("ffmpeg");
+        host_backend_environment(&mut bundled, true);
+        assert!(bundled
+            .get_envs()
+            .any(|(key, value)| key == "LD_LIBRARY_PATH" && value.is_none()));
+        let mut normal = Command::new("ffmpeg");
+        host_backend_environment(&mut normal, false);
+        assert!(normal.get_envs().next().is_none());
+    }
     #[test]
     fn stream_duration_clock_tags_are_bounded_and_do_not_use_container_length() {
         assert_eq!(clock_duration("00:00:04.000000000"), Some(4000));
