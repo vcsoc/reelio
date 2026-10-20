@@ -12,7 +12,7 @@ Read README.md and docs/implementation-status.md before changing behavior. Never
 - Never reset a failing user database or log credentials. Every schema change needs a transaction and an upgrade test.
 - Add real generated-media integration tests for every new codec/conversion/timestamp/container path. Hash comparisons in tests are stronger evidence than probe success alone.
 - Retain Cargo.lock and package-lock.json. Upgrade the Tauri macro/runtime family together and build the desktop crate.
-- User preference: keep work focused and complete requests as quickly as possible; aim for 15 seconds for small requests without skipping source safety or necessary verification, and never claim an unverified result.
+- User preference: complete every requested deliverable successfully, including builds/releases and publishing when requested. Stay focused and complete requests as quickly as possible; aim for 15 seconds where feasible without skipping source safety or necessary verification, and never claim an unverified result.
 - Native Hyprland automation: invoke dispatcher constructors through `hyprctl dispatch 'hl.dsp.focus({window="address:..."})'`, not `eval` (which only constructs the dispatcher). Always verify the owned PID/title before input; normal targeted close uses `hl.dsp.window.close(...)` through dispatch too.
 - User preference: after a verified update, normally close Reelio and install the latest verified package without asking again. Respect save/active-export/repair protections; do not forcibly terminate protected work or package transactions. Report authentication blockers and verify the installed version and executable.
 
