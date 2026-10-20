@@ -9,6 +9,7 @@ pub struct Storage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
     pub id: String,
+    pub project_id: Option<String>,
     pub sequence: u64,
     pub status: String,
     pub destination: String,
@@ -26,7 +27,7 @@ impl Storage {
         let version: i64 = c
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .map_err(|e| e.to_string())?;
-        if version > 1 {
+        if version > 2 {
             return Err(
                 "Database was created by a newer Reelio version; it has not been modified".into(),
             );
@@ -38,6 +39,11 @@ impl Storage {
                 CREATE TABLE jobs(id TEXT PRIMARY KEY, sequence INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, destination TEXT NOT NULL, project TEXT NOT NULL, progress TEXT, error TEXT, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
                 CREATE INDEX jobs_status ON jobs(status);
                 PRAGMA user_version=1;").map_err(|e|e.to_string())?;
+            tx.commit().map_err(|e| e.to_string())?;
+        }
+        if version < 2 {
+            let tx = c.transaction().map_err(|e| e.to_string())?;
+            tx.execute_batch("ALTER TABLE jobs ADD COLUMN project_id TEXT; UPDATE jobs SET project_id=json_extract(project,'$.id'); CREATE INDEX jobs_project ON jobs(project_id,created_at); PRAGMA user_version=2;").map_err(|e|e.to_string())?;
             tx.commit().map_err(|e| e.to_string())?;
         }
         c.execute("UPDATE jobs SET status='interrupted', sequence=sequence+1, error='Application stopped before a terminal result. Inspect the destination before retrying; no job is resumed automatically.' WHERE status IN ('queued','processing','verifying')",[]).map_err(|e|e.to_string())?;
@@ -75,8 +81,8 @@ impl Storage {
     pub fn insert_job(&self, id: &str, destination: &str, project: &Value) -> Result<(), String> {
         self.connection
             .execute(
-                "INSERT INTO jobs(id,status,destination,project) VALUES(?1,'queued',?2,?3)",
-                params![id, destination, project.to_string()],
+                "INSERT INTO jobs(id,status,destination,project,project_id) VALUES(?1,'queued',?2,?3,?4)",
+                params![id, destination, project.to_string(),project["id"].as_str()],
             )
             .map_err(|e| e.to_string())?;
         Ok(())
@@ -108,7 +114,7 @@ impl Storage {
     }
     pub fn jobs(&self) -> Result<Vec<Job>, String> {
         // Poll summaries only; embedded cover payloads are fetched once on explicit restore.
-        let mut s=self.connection.prepare("SELECT id,sequence,status,destination,progress,error,created_at FROM jobs ORDER BY created_at DESC LIMIT 100").map_err(|e|e.to_string())?;
+        let mut s=self.connection.prepare("SELECT id,sequence,status,destination,progress,error,created_at,project_id FROM jobs ORDER BY created_at DESC LIMIT 100").map_err(|e|e.to_string())?;
         let rows = s
             .query_map([], |r| {
                 Ok((
@@ -119,15 +125,17 @@ impl Storage {
                     r.get::<_, Option<String>>(4)?,
                     r.get::<_, Option<String>>(5)?,
                     r.get::<_, String>(6)?,
+                    r.get::<_, Option<String>>(7)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         let mut out = vec![];
         for row in rows {
-            let (id, sequence, status, destination, progress, error, created_at) =
+            let (id, sequence, status, destination, progress, error, created_at, project_id) =
                 row.map_err(|e| e.to_string())?;
             out.push(Job {
                 id,
+                project_id,
                 sequence,
                 status,
                 destination,
@@ -158,6 +166,42 @@ mod tests {
         let s = Storage::open(&path).unwrap();
         assert_eq!(s.jobs().unwrap()[0].status, "interrupted");
         assert_eq!(s.setting("theme").unwrap(), Some(serde_json::json!("dark")));
+    }
+    #[test]
+    fn project_ownership_is_backfilled_without_deleting_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        let raw = Connection::open(&path).unwrap();
+        raw.execute_batch("CREATE TABLE jobs(id TEXT PRIMARY KEY,sequence INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL,destination TEXT NOT NULL,project TEXT NOT NULL,progress TEXT,error TEXT,created_at TEXT NOT NULL DEFAULT 'old');PRAGMA user_version=1;").unwrap();
+        raw.execute(
+            "INSERT INTO jobs(id,status,destination,project)VALUES('old','completed','old.mp4',?1)",
+            params![serde_json::json!({"id":"project-a"}).to_string()],
+        )
+        .unwrap();
+        drop(raw);
+        let storage = Storage::open(&path).unwrap();
+        storage
+            .insert_job("new", "new.mp4", &serde_json::json!({"id":"project-b"}))
+            .unwrap();
+        let jobs = storage.jobs().unwrap();
+        assert_eq!(jobs.len(), 2);
+        assert_eq!(
+            jobs.iter()
+                .find(|j| j.id == "old")
+                .unwrap()
+                .project_id
+                .as_deref(),
+            Some("project-a")
+        );
+        assert_eq!(
+            jobs.iter()
+                .find(|j| j.id == "new")
+                .unwrap()
+                .project_id
+                .as_deref(),
+            Some("project-b")
+        );
+        assert_eq!(storage.job_project("old").unwrap()["id"], "project-a");
     }
     #[test]
     fn job_poll_excludes_cover_payload_but_restore_keeps_snapshot() {

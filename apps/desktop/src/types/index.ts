@@ -137,6 +137,7 @@ export interface Progress {
 }
 export interface Job {
   id: string;
+  project_id?: string | null;
   sequence: number;
   status: string;
   destination: string;

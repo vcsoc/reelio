@@ -1099,14 +1099,29 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .inspector .chapter-row {
-    grid-template-columns: 25px minmax(0, 1fr) 30px;
+    grid-template-columns: 20px minmax(0, 1fr) 112px 24px;
+    gap: 5px;
+    margin: 8px 0;
   }
   .inspector .chapter-row label {
-    grid-column: 2;
+    min-width: 0;
+  }
+  .inspector .chapter-row input {
+    min-width: 0;
+    width: 100%;
+    padding: 6px 4px;
+    font-size: 11px;
   }
   .inspector .chapter-row > button {
-    grid-column: 3;
+    grid-column: 4;
     grid-row: 1;
+  }
+  .chapter-help {
+    display: inline-flex;
+    vertical-align: middle;
+    margin-left: 7px;
+    color: var(--muted);
+    cursor: help;
   }
   .inspector .export-stats {
     flex-wrap: wrap;

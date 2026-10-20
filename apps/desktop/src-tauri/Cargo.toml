@@ -18,6 +18,7 @@ reelio-domain.workspace = true
 reelio-application.workspace = true
 reelio-ffmpeg.workspace = true
 reelio-updates.workspace = true
+reelio-subtitles.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true

@@ -274,7 +274,7 @@ test("project menu, toolbar tools, borderless title and interface zoom", async (
   await trigger.focus();
   await trigger.press("ArrowDown");
   const menu = page.getByRole("menu", { name: "Project actions" });
-  await expect(menu.getByRole("menuitem")).toHaveCount(6);
+  await expect(menu.getByRole("menuitem")).toHaveCount(7);
   await expect(
     menu.getByRole("menuitem", { name: "Add tracks", exact: true }),
   ).toHaveCount(0);
@@ -627,6 +627,10 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
               return;
             }
             if (cmd === "export_start") {
+              localStorage.setItem(
+                "test-export-project-id",
+                String((args.project as { id: string }).id),
+              );
               localStorage.setItem("test-export-request", JSON.stringify(args));
               localStorage.setItem(
                 "test-export-count",
@@ -907,6 +911,9 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
                 ? [
                     {
                       id: "fitted-export",
+                      project_id: localStorage.getItem(
+                        "test-export-project-id",
+                      ),
                       sequence: status === "completed" ? 2 : 1,
                       status,
                       destination: "/tmp/fitted-output.mkv",
@@ -1863,6 +1870,20 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
     exact: true,
   });
   await expect(startTime).toHaveValue("00:00:00.000");
+  const chapterTitle = page.getByRole("textbox", {
+    name: "Chapter 1 title",
+    exact: true,
+  });
+  expect(
+    Math.abs(
+      (await chapterTitle.boundingBox())!.y -
+        (await startTime.boundingBox())!.y,
+    ),
+  ).toBeLessThan(1);
+  await expect(page.locator(".chapter-row").first()).toHaveText("01");
+  await expect(
+    page.getByRole("img", { name: "Chapter timing information", exact: true }),
+  ).toHaveAttribute("title", /Start times use HH:MM:SS/);
   await startTime.fill("00:00:01.234");
   await startTime.press("Tab");
   await expect(startTime).toHaveValue("00:00:01.234");
@@ -2808,6 +2829,9 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
       exact: true,
     }),
   ).toBeVisible();
+  await expect(page.getByText(/Cropped Long audio \[audio-id\]/)).toHaveCount(
+    0,
+  );
   await expect(
     page.getByRole("button", { name: "Undo", exact: true }),
   ).toBeDisabled();

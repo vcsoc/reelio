@@ -1,0 +1,173 @@
+.settings-dialog.subtitle-editor {
+  width: min(1320px, calc(100vw - 28px));
+  max-width: none;
+  max-height: 94vh;
+  overflow: auto;
+  padding: 18px;
+}
+.subtitle-editor-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.subtitle-editor-heading h2 {
+  margin: 0 0 5px;
+}
+.subtitle-editor-heading small {
+  overflow-wrap: anywhere;
+}
+.subtitle-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+  margin: 10px 0;
+}
+.subtitle-editor-toolbar label {
+  display: grid;
+  gap: 5px;
+  flex: 1 1 140px;
+}
+.subtitle-editor input,
+.subtitle-editor select,
+.subtitle-editor textarea {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.subtitle-editor input[type="checkbox"] {
+  width: auto;
+}
+.subtitle-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.7fr) minmax(0, 2fr);
+  gap: 16px;
+}
+.subtitle-cue-browser,
+.subtitle-cue-editor {
+  min-width: 0;
+}
+.subtitle-cue-list {
+  max-height: 510px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+.subtitle-cue-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border-bottom: 1px solid var(--border);
+}
+.subtitle-cue-row.selected {
+  background: var(--selection);
+}
+.subtitle-cue-row button {
+  flex: 1;
+  text-align: left;
+  display: grid;
+  gap: 5px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  background: transparent;
+  border: 0;
+}
+.subtitle-cue-row b {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.subtitle-cue-row span {
+  font-size: 12px;
+  line-height: 1.45;
+}
+.subtitle-cue-editor textarea {
+  resize: vertical;
+  line-height: 1.6;
+  padding: 10px;
+}
+.subtitle-editor-player {
+  position: relative;
+  background: #11151b;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.subtitle-editor-player video {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+}
+.subtitle-editor-player > p {
+  padding: 20px;
+}
+.subtitle-editor-caption {
+  position: absolute;
+  bottom: 48px;
+  left: 8%;
+  right: 8%;
+  text-align: center;
+  pointer-events: none;
+  color: #fff;
+  font-size: clamp(14px, 2vw, 21px);
+  line-height: 1.4;
+  white-space: pre-line;
+  text-shadow:
+    1px 1px 3px #000,
+    -1px -1px 3px #000;
+}
+.subtitle-editor details {
+  margin: 12px 0;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.subtitle-editor summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.subtitle-editor progress {
+  width: min(400px, 75%);
+  accent-color: var(--accent);
+}
+.subtitle-translation {
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+  padding-top: 10px;
+}
+.subtitle-review-list {
+  max-height: 340px;
+  overflow: auto;
+}
+.subtitle-review-list > label {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  gap: 12px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.subtitle-review-list p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .subtitle-editor-grid {
+    grid-template-columns: 1fr;
+  }
+  .subtitle-cue-list {
+    max-height: 190px;
+  }
+  .subtitle-editor-heading {
+    align-items: start;
+  }
+  .subtitle-editor-toolbar button {
+    flex: 1 1 auto;
+  }
+  .subtitle-review-list > label {
+    grid-template-columns: 24px 1fr;
+  }
+  .subtitle-review-list > label > span:last-child {
+    grid-column: 2;
+  }
+}

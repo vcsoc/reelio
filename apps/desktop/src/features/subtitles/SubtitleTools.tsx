@@ -9,6 +9,7 @@ import {
 } from "../../types";
 import { ResourceSearch, type Run } from "../resources/ResourceSearch";
 import type { SubtitleCue } from "./preview";
+import { openSubtitleEditor } from "./SubtitleEditor";
 const cueTime = (ms: number) =>
   `${time(ms)}.${String(Math.round(ms) % 1000).padStart(3, "0")}`;
 export interface TestedSubtitle {
@@ -59,6 +60,14 @@ export function SubtitleTools({
     tested.cues.some((c) => c.end > duration + 500);
   return (
     <section className="subtitle-tools">
+      <button
+        type="button"
+        className="primary"
+        disabled={busy}
+        onClick={openSubtitleEditor}
+      >
+        Create / edit / translate SRT
+      </button>
       <ResourceSearch
         kind="subtitles"
         title={project.metadata.title || project.name}

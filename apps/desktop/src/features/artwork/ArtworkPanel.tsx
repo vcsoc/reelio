@@ -16,6 +16,7 @@ import {
   Info,
 } from "lucide-react";
 import { sizeCrop } from "./imageGeometry";
+import { cropPresets } from "./cropPresets";
 import { CropSelection } from "./CropSelection";
 import { LiveArtworkPreview } from "./LiveArtworkPreview";
 const Hint = ({ text }: { text: string }) => (
@@ -439,51 +440,37 @@ export function ArtworkPanel({
                   <Hint text="Choose a ratio, draw a crop, or adjust its size. Lock keeps the current crop proportions while resizing." />
                 </legend>
                 <div className="artwork-tools artwork-apply-tools">
-                  <button
-                    className="secondary"
-                    aria-label="Poster 2:3"
-                    title="Crop to poster 2:3"
-                    style={{ color: "var(--accent)" }}
-                    onClick={() => cropPreset(2 / 3)}
-                  >
-                    <RectangleVertical size={18} aria-hidden="true" />
-                  </button>
-                  <button
-                    className="secondary"
-                    aria-label="Square"
-                    title="Crop to square 1:1"
-                    style={{ color: "var(--art-green)" }}
-                    onClick={() => cropPreset(1)}
-                  >
-                    <Square size={18} aria-hidden="true" />
-                  </button>
-                  <button
-                    className="secondary"
-                    aria-label="Wide 16:9"
-                    title="Crop to wide 16:9"
-                    style={{ color: "var(--art-cyan)" }}
-                    onClick={() => cropPreset(16 / 9)}
-                  >
-                    <RectangleHorizontal size={18} aria-hidden="true" />
-                  </button>
-                  <button
-                    className="secondary"
-                    aria-label="Wide 3:2"
-                    title="Crop to wide 3:2"
-                    style={{ color: "var(--art-cyan)" }}
-                    onClick={() => cropPreset(3 / 2)}
-                  >
-                    <RectangleHorizontal size={18} />
-                  </button>
-                  <button
-                    className="secondary"
-                    aria-label="Poster 9:16"
-                    title="Crop to poster 9:16"
-                    style={{ color: "var(--accent)" }}
-                    onClick={() => cropPreset(9 / 16)}
-                  >
-                    <RectangleVertical size={18} />
-                  </button>
+                  {cropPresets.map(({ name, width, height }) => {
+                    const Icon =
+                      width < height
+                        ? RectangleVertical
+                        : width > height
+                          ? RectangleHorizontal
+                          : Square;
+                    return (
+                      <button
+                        key={name}
+                        className="secondary"
+                        aria-label={name}
+                        title={
+                          name === "Square"
+                            ? "Crop to square 1:1"
+                            : `Crop to ${name.toLowerCase()}`
+                        }
+                        style={{
+                          color:
+                            width < height
+                              ? "var(--accent)"
+                              : width > height
+                                ? "var(--art-cyan)"
+                                : "var(--art-green)",
+                        }}
+                        onClick={() => cropPreset(width / height)}
+                      >
+                        <Icon size={18} aria-hidden="true" />
+                      </button>
+                    );
+                  })}
                   <button
                     className="secondary"
                     aria-label="Clear crop"

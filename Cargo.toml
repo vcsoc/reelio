@@ -21,6 +21,7 @@ reelio-application = { path = "crates/reelio-application" }
 reelio-artwork = { path = "crates/reelio-artwork" }
 reelio-resources = { path = "crates/reelio-resources" }
 reelio-updates = { path = "crates/reelio-updates" }
+reelio-subtitles = { path = "crates/reelio-subtitles" }
 
 [profile.release]
 lto = "thin"

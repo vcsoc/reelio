@@ -1,5 +1,6 @@
 mod preview;
 mod resources;
+mod subtitles;
 mod updates;
 
 #[tauri::command]
@@ -441,6 +442,7 @@ pub fn run() {
             app.manage(state);
             app.manage(Arc::new(preview::PreviewService::default()));
             app.manage(Arc::new(reelio_updates::UpdateService::default()));
+            app.manage(reelio_subtitles::local_model::Service::new(dir.join("subtitles")).map_err(std::io::Error::other)?);
             Ok(())
         })
         .invoke_handler(move |invoke: tauri::ipc::Invoke<tauri::Wry>| {
@@ -467,6 +469,15 @@ pub fn run() {
                 updates::update_check,
                 updates::update_download,
                 updates::update_cancel,
+                subtitles::subtitle_editor_open,
+                subtitles::subtitle_editor_save,
+                subtitles::subtitle_editor_dirty,
+                subtitles::subtitle_editor_draft,
+                subtitles::subtitle_models,
+                subtitles::subtitle_model_start,
+                subtitles::subtitle_model_status,
+                subtitles::subtitle_model_cancel,
+                subtitles::subtitle_model_results,
                 project_validate,
                 project_open,
                 project_save,
@@ -513,6 +524,11 @@ pub fn run() {
                 }
                 tauri::WindowEvent::CloseRequested { api, .. } => {
                     let s = window.state::<AppState>();
+                    if window.state::<Arc<reelio_subtitles::local_model::Service>>().protected() {
+                        api.prevent_close();
+                        let _=window.emit("subtitle:close-blocked",());
+                        return;
+                    }
                     let updates=window.state::<Arc<reelio_updates::UpdateService>>();
                     if s.active_job() || s.dependencies.is_repairing() || updates.downloading() {
                         api.prevent_close();

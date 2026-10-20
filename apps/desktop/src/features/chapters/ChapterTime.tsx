@@ -17,7 +17,6 @@ export function ChapterTime({
   }, [value]);
   return (
     <label>
-      Start time
       <input
         aria-label={`Chapter ${index + 1} start time`}
         aria-describedby={error ? `chapter-time-error-${index}` : undefined}

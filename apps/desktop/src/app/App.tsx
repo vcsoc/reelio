@@ -98,6 +98,7 @@ import {
   SubtitleTools,
   type TestedSubtitle,
 } from "../features/subtitles/SubtitleTools";
+import { SubtitleEditor } from "../features/subtitles/SubtitleEditor";
 import { inspectVtt, bindSubtitlePreview } from "../features/subtitles/preview";
 import "./styles.css";
 import "../features/resources/styles.css";
@@ -350,8 +351,12 @@ export default function App() {
       );
     });
   }
-  async function addSubtitles(paths: string[]) {
+  async function addSubtitles(paths: string[], requireImport = false) {
     if (importLock.current) {
+      if (requireImport)
+        throw Error(
+          "An import is already running; the saved SRT copy is unchanged.",
+        );
       setError("An import is already running");
       return;
     }
@@ -373,10 +378,15 @@ export default function App() {
             if (track.asset_id === asset.id && !track.title)
               track.title = "External subtitles";
           }
-          trackId = next.tracks.find((t) => t.asset_id === asset.id)?.id;
+          const importedId = next.assets.find((a) => a.path === asset.path)?.id;
+          trackId = next.tracks.find((t) => t.asset_id === importedId)?.id;
           edit((d) => Object.assign(d, next));
         }
       });
+      if (requireImport && !trackId)
+        throw Error(
+          "Could not add the saved SRT to the project. Your copy is safe; close the editor to inspect the project's import error.",
+        );
       if (trackId) await testSubtitle(trackId);
     } finally {
       importLock.current = false;
@@ -1955,8 +1965,8 @@ export default function App() {
                         {String(i + 1).padStart(2, "0")}
                       </span>
                       <label>
-                        Title
                         <input
+                          aria-label={`Chapter ${i + 1} title`}
                           value={c.title}
                           onChange={(e) =>
                             edit((d) => {
@@ -2003,12 +2013,15 @@ export default function App() {
                   >
                     Sort by timestamp
                   </button>
-                  <p className="inset-note">
-                    Start times use HH:MM:SS.mmm and must be unique and
-                    increasing. Chapter ends follow the next start or the source
-                    duration automatically. The backend validates and verifies
-                    chapter timing before finalization.
-                  </p>
+                  <span
+                    className="chapter-help"
+                    tabIndex={0}
+                    role="img"
+                    aria-label="Chapter timing information"
+                    title="Start times use HH:MM:SS.mmm and must be unique and increasing. Chapter ends follow the next start or the source duration automatically. The backend validates and verifies chapter timing before finalization."
+                  >
+                    <CircleHelp size={15} />
+                  </span>
                 </Tabs.Content>
                 <Tabs.Content value="export">
                   <div className="section-heading">
@@ -2157,97 +2170,99 @@ export default function App() {
                       One supervised job at a time. Interrupted jobs never
                       resume automatically.
                     </p>
-                    {jobs.length === 0 && (
+                    {jobs.filter((j) => j.project_id === p.id).length === 0 && (
                       <p className="inset-note">
                         Your completed and failed exports will appear here.
                       </p>
                     )}
-                    {jobs.map((j) => (
-                      <article className="job" key={j.id}>
-                        <div className="job-top">
-                          <strong>{basename(j.destination)}</strong>
-                          <span className={`job-status ${j.status}`}>
-                            {j.status === "completed" && <Check size={13} />}{" "}
-                            {j.status}
-                          </span>
-                        </div>
-                        {["processing", "verifying", "queued"].includes(
-                          j.status,
-                        ) && (
-                          <>
-                            <progress
-                              max="100"
-                              value={j.progress?.percent ?? undefined}
-                              aria-label="Export progress"
-                            />
-                            <div className="job-top">
-                              <small>
-                                {j.progress
-                                  ? `${bytes(j.progress.bytes)} · ${time(j.progress.elapsed_ms)} elapsed · ${time(j.progress.processed_ms)} processed`
-                                  : "Starting media backend..."}
-                              </small>
-                              <button
-                                onClick={() =>
-                                  void run("Cancelling export", () =>
-                                    call("export_cancel", { id: j.id }),
-                                  )
-                                }
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </>
-                        )}
-                        {j.error && <p className="job-error">{j.error}</p>}
-                        {j.status === "completed" &&
-                          !!j.progress?.notices?.length && (
-                            <details className="job-adjustments" open>
-                              <summary>
-                                {j.progress.notices.length} timeline adjustments
-                                to fit video
-                              </summary>
-                              <ul>
-                                {j.progress.notices.map((notice, index) => (
-                                  <li key={index}>{notice}</li>
-                                ))}
-                              </ul>
-                            </details>
+                    {jobs
+                      .filter((j) => j.project_id === p.id)
+                      .map((j) => (
+                        <article className="job" key={j.id}>
+                          <div className="job-top">
+                            <strong>{basename(j.destination)}</strong>
+                            <span className={`job-status ${j.status}`}>
+                              {j.status === "completed" && <Check size={13} />}{" "}
+                              {j.status}
+                            </span>
+                          </div>
+                          {["processing", "verifying", "queued"].includes(
+                            j.status,
+                          ) && (
+                            <>
+                              <progress
+                                max="100"
+                                value={j.progress?.percent ?? undefined}
+                                aria-label="Export progress"
+                              />
+                              <div className="job-top">
+                                <small>
+                                  {j.progress
+                                    ? `${bytes(j.progress.bytes)} · ${time(j.progress.elapsed_ms)} elapsed · ${time(j.progress.processed_ms)} processed`
+                                    : "Starting media backend..."}
+                                </small>
+                                <button
+                                  onClick={() =>
+                                    void run("Cancelling export", () =>
+                                      call("export_cancel", { id: j.id }),
+                                    )
+                                  }
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </>
                           )}
-                        {["failed", "interrupted", "cancelled"].includes(
-                          j.status,
-                        ) && (
-                          <button
-                            onClick={() => {
-                              if (
-                                dirty &&
-                                !confirm(
-                                  "Replace current edits with this job snapshot?",
+                          {j.error && <p className="job-error">{j.error}</p>}
+                          {j.status === "completed" &&
+                            !!j.progress?.notices?.length && (
+                              <details className="job-adjustments" open>
+                                <summary>
+                                  {j.progress.notices.length} timeline
+                                  adjustments to fit video
+                                </summary>
+                                <ul>
+                                  {j.progress.notices.map((notice, index) => (
+                                    <li key={index}>{notice}</li>
+                                  ))}
+                                </ul>
+                              </details>
+                            )}
+                          {["failed", "interrupted", "cancelled"].includes(
+                            j.status,
+                          ) && (
+                            <button
+                              onClick={() => {
+                                if (
+                                  dirty &&
+                                  !confirm(
+                                    "Replace current edits with this job snapshot?",
+                                  )
                                 )
-                              )
-                                return;
-                              void run(
-                                "Restoring selected job settings",
-                                async () => {
-                                  const snapshot = await call<Project>(
-                                    "job_project",
-                                    { id: j.id },
-                                  );
-                                  replace(snapshot);
-                                  setNotice(
-                                    "Job settings restored with source authorization. Relink missing sources if needed, validate, and choose a new destination.",
-                                  );
-                                },
-                              );
-                            }}
-                          >
-                            Restore settings to retry
-                          </button>
-                        )}
-                        <small>
-                          {j.created_at} · revision {j.sequence}
-                        </small>
-                      </article>
-                    ))}
+                                  return;
+                                void run(
+                                  "Restoring selected job settings",
+                                  async () => {
+                                    const snapshot = await call<Project>(
+                                      "job_project",
+                                      { id: j.id },
+                                    );
+                                    replace(snapshot);
+                                    setNotice(
+                                      "Job settings restored with source authorization. Relink missing sources if needed, validate, and choose a new destination.",
+                                    );
+                                  },
+                                );
+                              }}
+                            >
+                              Restore settings to retry
+                            </button>
+                          )}
+                          <small>
+                            {j.created_at} · revision {j.sequence}
+                          </small>
+                        </article>
+                      ))}
                   </section>
                 </Tabs.Content>
               </>
@@ -2690,6 +2705,19 @@ export default function App() {
           </p>
         </dialog>
       )}
+      <SubtitleEditor
+        videoUrl={
+          !previewError && previewUrl?.path === source?.path
+            ? previewUrl?.url
+            : undefined
+        }
+        onOpen={() => video.current?.pause()}
+        onAdd={(paths) => addSubtitles(paths, true)}
+        projectBusy={!!busy}
+        sources={p.assets
+          .filter((a) => /\.srt$/i.test(a.path))
+          .map((a) => ({ path: a.path, label: basename(a.path) }))}
+      />
     </Tabs.Root>
   );
 }
