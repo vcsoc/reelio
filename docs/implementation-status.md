@@ -48,6 +48,12 @@ Global result/error banners are floating custom toasts with five/eight-second di
 
 Verification includes 92 frontend unit tests, 128 workspace Rust tests (six ignores), 11 desktop Rust tests (two display-dependent ignores), workspace Clippy/formatting, production builds and 33 passing desktop/mobile regressions (one desktop-only skip), including toast timing, platform placement, Quit, Ctrl+W, canceled closing and confirmed recovery. A separate-data native Linux window exits cleanly on an owned compositor close request. Its warmed GStreamer-registry startup reports healthy backend/playback and zero missing components; the first fully cold isolated cache reported one unavailable component, so no new cold-start reliability claim is made. macOS styling is browser-mocked, not native-Mac qualified. Per-user 0.2.0-6 and its local Arch archive match the verified native binary; no public release is changed.
 
+## Published Linux And Windows 0.2.0-6
+
+Release `v0.2.0-6` is published from source `91a2d0f66fbd936c5431b3527f122bb41ce3c4e6`, containing the preceding 0.2.0-4/5/6 updates. Assets: Linux AppImage, Arch package, Windows x64 NSIS installer and SHA256SUMS. Uploaded sizes and GitHub SHA-256 digests match verified candidates. AppImage workflow 39492262580 and Windows workflow 39492258531 succeeded; the AppImage also passes a separate-data Arch startup with its correct absolute APPDIR. The per-user native installation remains 0.2.0-6; existing sessions are not forced closed.
+
+CI 39492246854 passes its desktop job but retains the known Ubuntu audio-position/mixing and Windows/macOS relative-project-path failures. Windows interactive runtime, native macOS, broad codec qualification and signing remain open. See `docs/releases/0.2.0-6.md` for evidence and limitations. This publication supersedes the historical "not published" status of the combined local changes, not their recorded acceptance limits.
+
 ## Next Acceptance Milestones
 
 1. Harden and qualify the existing import-to-export workflow on all three operating systems, including large files, disk full, race conditions, crash recovery, language/disposition edge cases, malformed inputs and native UI automation.

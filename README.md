@@ -8,7 +8,7 @@ A local-first desktop media container editor built with Rust, Tauri 2, React, Ty
 
 ## Downloads
 
-[Reelio 0.2.0-3](https://github.com/vcsoc/reelio/releases/tag/v0.2.0-3) provides an x86_64 AppImage, an Arch/Omarchy package and SHA256SUMS. The AppImage bundles GStreamer; FFmpeg/FFprobe remain external. Native startup and runtime checks pass on Ubuntu 22.04 and Arch; broader playback qualification and signing remain open. See [packaging](docs/packaging.md) for password-free per-user installation, dependencies and FUSE-free execution.
+[Reelio 0.2.0-6](https://github.com/vcsoc/reelio/releases/tag/v0.2.0-6) provides a Linux x86_64 AppImage, an Arch/Omarchy package, a Windows x64 installer and SHA256SUMS. The AppImage bundles GStreamer; FFmpeg/FFprobe remain external. Packaged startup checks pass on Ubuntu 22.04 and Arch; Windows PE/version/build checks pass, but interactive Windows qualification, broader playback testing and signing remain open. Existing cross-platform CI failures are disclosed in the [release notes](docs/releases/0.2.0-6.md). See [packaging](docs/packaging.md) for password-free per-user installation, dependencies and FUSE-free execution.
 
 ## Run
 
