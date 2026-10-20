@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent } from "react";
-import { Copy, Minus, Square, X } from "lucide-react";
+import { Copy, Minus, Square, X, Maximize2, Minimize2 } from "lucide-react";
 import { call, desktop } from "../services/desktop";
 
 type WindowAction = "state" | "drag" | "minimize" | "toggle_maximize" | "close";
@@ -9,6 +9,7 @@ export function useWindowChrome(
   mayClose: () => boolean,
 ) {
   const [maximized, setMaximized] = useState(false);
+  const [platform, setPlatform] = useState({ os: "windows", tiling: false });
   useEffect(() => {
     if (!desktop) return;
     let alive = true;
@@ -25,6 +26,13 @@ export function useWindowChrome(
           });
       }, 80);
     };
+    void call<{ os: string; tiling: boolean }>("window_platform")
+      .then((value) => {
+        if (alive && value?.os) setPlatform(value);
+      })
+      .catch((error: Error) => {
+        if (alive) onError(error.message);
+      });
     refresh();
     window.addEventListener("resize", refresh);
     return () => {
@@ -56,11 +64,14 @@ export function useWindowChrome(
     event.preventDefault();
     void act(event.detail === 2 ? "toggle_maximize" : "drag");
   };
-  return {
-    onMouseDown,
-    controls: desktop ? (
+  const requestClose = () => {
+    if (desktop && mayClose()) void act("close");
+  };
+  const controls =
+    desktop && !platform.tiling ? (
       <div
-        className="window-controls"
+        className={`window-controls ${platform.os === "macos" ? "macos-controls" : ""}`}
+        data-platform={platform.os}
         role="group"
         aria-label="Window controls"
       >
@@ -78,20 +89,33 @@ export function useWindowChrome(
           title={maximized ? "Restore" : "Maximize"}
           onClick={() => void act("toggle_maximize")}
         >
-          {maximized ? <Copy size={14} /> : <Square size={14} />}
+          {platform.os === "windows" ? (
+            maximized ? (
+              <Copy size={14} />
+            ) : (
+              <Square size={14} />
+            )
+          ) : maximized ? (
+            <Minimize2 size={14} />
+          ) : (
+            <Maximize2 size={14} />
+          )}
         </button>
         <button
           type="button"
           className="window-close"
           aria-label="Close window"
           title="Close Reelio"
-          onClick={() => {
-            if (mayClose()) void act("close");
-          }}
+          onClick={requestClose}
         >
           <X size={16} />
         </button>
       </div>
-    ) : null,
+    ) : null;
+  return {
+    onMouseDown,
+    requestClose,
+    leadingControls: platform.os === "macos" ? controls : null,
+    controls: platform.os === "macos" ? null : controls,
   };
 }

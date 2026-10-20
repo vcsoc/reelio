@@ -4,6 +4,7 @@ import type { Project } from "../../types";
 import { sourceStream } from "../../types";
 import { call, desktop } from "../../services/desktop";
 import { clipBounds } from "./geometry";
+import { syncPreviewAudioRate } from "./playback";
 
 export function useAudioPreview(
   video: RefObject<HTMLVideoElement | null>,
@@ -101,7 +102,12 @@ export function useAudioPreview(
           Math.abs(audio.currentTime - position) > 0.12
         )
           audio.currentTime = position;
-        audio.playbackRate = player.playbackRate;
+        if (!syncPreviewAudioRate(audio, player.playbackRate)) {
+          fail(
+            `Audio preview does not support ${player.playbackRate}x playback; the affected lane is paused. Export mappings are unchanged.`,
+          );
+          continue;
+        }
         if (shouldPlay && audio.paused)
           void audio
             .play()

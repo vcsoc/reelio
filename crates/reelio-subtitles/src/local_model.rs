@@ -167,6 +167,9 @@ impl Service {
             dirty: AtomicBool::new(dirty),
         }))
     }
+    pub fn is_active(&self) -> bool {
+        self.active.load(Ordering::SeqCst)
+    }
     pub fn protected(&self) -> bool {
         self.active.load(Ordering::SeqCst) || self.dirty.load(Ordering::SeqCst)
     }

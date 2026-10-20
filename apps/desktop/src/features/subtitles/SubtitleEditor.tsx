@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { StudioInfo } from "./StudioInfo";
+import { inspectVtt } from "./preview";
+import type { Project } from "../../types";
+type StudioSource = { path?: string; project?: Project; trackId?: string };
 import { listen } from "@tauri-apps/api/event";
 import { call, desktop } from "../../services/desktop";
 import {
@@ -66,7 +69,9 @@ export function SubtitleEditor({
   visible,
   onClose,
   children,
+  closeGuard,
 }: {
+  closeGuard?: { current: (() => Promise<boolean>) | null };
   embedded?: boolean;
   visible?: boolean;
   onClose?: () => void;
@@ -79,6 +84,8 @@ export function SubtitleEditor({
 }) {
   const dialog = useRef<HTMLDialogElement>(null),
     player = useRef<HTMLVideoElement>(null),
+    cueList = useRef<HTMLDivElement>(null),
+    sourceOpen = useRef<(source: StudioSource) => void>(() => {}),
     textArea = useRef<HTMLTextAreaElement>(null),
     persist = useRef<Promise<unknown>>(Promise.resolve()),
     started = useRef(false),
@@ -95,7 +102,6 @@ export function SubtitleEditor({
     [opened, setOpened] = useState(false),
     [selected, setSelected] = useState(""),
     [marked, setMarked] = useState<Set<string>>(new Set()),
-    [page, setPage] = useState(0),
     [filter, setFilter] = useState(""),
     [work, setWork] = useState(""),
     [notice, setNotice] = useState(""),
@@ -116,6 +122,7 @@ export function SubtitleEditor({
     [reviewPage, setReviewPage] = useState(0),
     [accepted, setAccepted] = useState<Set<string>>(new Set()),
     [time, setTime] = useState(0),
+    [playing, setPlaying] = useState(false),
     [splitAt, setSplitAt] = useState("");
   const doc = history.doc,
     serialized = useMemo(() => documentKey(doc), [doc]),
@@ -136,9 +143,7 @@ export function SubtitleEditor({
                 .includes(filter.toLocaleLowerCase()),
           ),
       [doc, filter],
-    ),
-    pages = Math.max(1, Math.ceil(filtered.length / 100)),
-    actualPage = Math.min(page, pages - 1);
+    );
   const targets = () => {
     const ids = new Set(doc.cues.map((c) => c.id)),
       checked = new Set([...marked].filter((id) => ids.has(id)));
@@ -159,6 +164,29 @@ export function SubtitleEditor({
     persist.current = persist.current.catch(() => undefined).then(action);
     return persist.current;
   };
+  if (closeGuard)
+    closeGuard.current = async () => {
+      if (locked) {
+        setError(
+          "Finish or cancel the active subtitle operation before quitting.",
+        );
+        return false;
+      }
+      if (
+        dirty &&
+        !confirm(
+          "Close Reelio and keep your unsaved subtitle draft for recovery next time? Choose Cancel to save an SRT copy first.",
+        )
+      )
+        return false;
+      await enqueue(() =>
+        call(
+          "subtitle_editor_draft",
+          dirty ? { document: doc, clear: false } : { clear: true },
+        ),
+      );
+      return true;
+    };
   const fail = (e: unknown) =>
     setError(e instanceof Error ? e.message : String(e));
   function commit(transform: (doc: SrtDocument) => SrtDocument) {
@@ -226,14 +254,18 @@ export function SubtitleEditor({
   }
   useEffect(() => {
     const open = () => show();
+    const openSource = (event: Event) => {
+      const source = (event as CustomEvent<StudioSource>).detail;
+      if (source) sourceOpen.current(source);
+    };
+    window.addEventListener("reelio:subtitle-source", openSource);
     window.addEventListener("reelio:subtitle-editor", open);
     let unlisten: (() => void) | undefined;
     let disposed = false;
     if (desktop)
       void listen("subtitle:close-blocked", () => {
-        show();
-        setNotice(
-          "Save or explicitly discard the subtitle draft, and finish/cancel the local model operation before closing Reelio.",
+        setError(
+          "Finish or cancel the active subtitle operation before quitting Reelio.",
         );
       }).then((fn) => {
         if (disposed) fn();
@@ -242,6 +274,7 @@ export function SubtitleEditor({
     return () => {
       disposed = true;
       window.removeEventListener("reelio:subtitle-editor", open);
+      window.removeEventListener("reelio:subtitle-source", openSource);
       unlisten?.();
     };
   }, []);
@@ -320,7 +353,8 @@ export function SubtitleEditor({
     setForcedDraft(false);
     setSelected(next.cues[0]?.id || "");
     setMarked(new Set());
-    setPage(0);
+    setFilter("");
+    setNotice("");
     setSourcePath(path);
     setSavedPath("");
     setReview(undefined);
@@ -522,6 +556,64 @@ export function SubtitleEditor({
   const active = doc.cues
     .filter((c) => time >= c.start_ms && time < c.end_ms)
     .slice(0, 5);
+  sourceOpen.current = (source) => {
+    show();
+    if (locked) {
+      setNotice(
+        "Finish or cancel the current subtitle operation before opening another source.",
+      );
+      return;
+    }
+    if (source.path) {
+      void load(source.path);
+      return;
+    }
+    if (!source.project || !source.trackId) return;
+    if (
+      dirty &&
+      !window.confirm(
+        "Discard the current subtitle draft and open a converted subtitle copy?",
+      )
+    )
+      return;
+    setWork("Opening subtitle copy");
+    setError("");
+    void call<string>("subtitle_preview", {
+      project: source.project,
+      trackId: source.trackId,
+    })
+      .then(async (text) => {
+        const cues = inspectVtt(text).map((cue) => ({
+          id: crypto.randomUUID(),
+          start_ms: cue.start,
+          end_ms: cue.end,
+          text: cue.text,
+        }));
+        if (
+          cues.some((cue) => new TextEncoder().encode(cue.text).length > 16384)
+        )
+          throw Error("A converted cue exceeds the editor text limit.");
+        if (
+          new TextEncoder().encode(documentKey({ cues })).length >
+          4 * 1024 * 1024
+        )
+          throw Error("Converted subtitles exceed the editor document limit.");
+        await reset({ cues }, "", true);
+        setNotice(
+          "Opened a converted text-subtitle copy. Original source and timing stay unchanged; styling may differ. Save as a new SRT copy.",
+        );
+      })
+      .catch(fail)
+      .finally(() => setWork(""));
+  };
+  const playingCue = active[0]?.id;
+  useEffect(() => {
+    if (!playing || !playingCue || !player.current || player.current.paused)
+      return;
+    cueList.current
+      ?.querySelector(`[data-cue-id="${CSS.escape(playingCue)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [playingCue, playing]);
   return (
     <Container
       ref={embedded ? undefined : dialog}
@@ -737,6 +829,38 @@ export function SubtitleEditor({
         <section
           className="subtitle-cue-browser"
           aria-label="Subtitle cue list"
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            if (
+              (event.target as HTMLElement).matches(
+                'input:not([type="checkbox"]),textarea,select',
+              )
+            )
+              return;
+            if (!filtered.length) return;
+            event.preventDefault();
+            const index = filtered.findIndex(({ cue }) => cue.id === selected);
+            const next =
+              filtered[
+                Math.max(
+                  0,
+                  Math.min(
+                    filtered.length - 1,
+                    index + (event.key === "ArrowRight" ? 1 : -1),
+                  ),
+                )
+              ].cue;
+            setSelected(next.id);
+            seek(next.start_ms);
+            cueList.current
+              ?.querySelector<HTMLButtonElement>(
+                `[data-cue-id="${CSS.escape(next.id)}"] button`,
+              )
+              ?.focus({ preventScroll: true });
+            cueList.current
+              ?.querySelector(`[data-cue-id="${CSS.escape(next.id)}"]`)
+              ?.scrollIntoView({ block: "nearest" });
+          }}
         >
           <label>
             Find cues
@@ -744,7 +868,6 @@ export function SubtitleEditor({
               value={filter}
               onChange={(e) => {
                 setFilter(e.target.value);
-                setPage(0);
               }}
               maxLength={512}
             />
@@ -760,64 +883,49 @@ export function SubtitleEditor({
               Clear selection
             </button>
           </div>
-          <div className="subtitle-cue-list">
-            {filtered
-              .slice(actualPage * 100, actualPage * 100 + 100)
-              .map(({ cue: c, index }) => (
-                <div
-                  className={`subtitle-cue-row ${selected === c.id ? "selected" : ""}`}
-                  key={c.id}
+          <div className="subtitle-cue-list" ref={cueList} tabIndex={0}>
+            {filtered.map(({ cue: c, index }) => (
+              <div
+                className={`subtitle-cue-row ${selected === c.id ? "selected" : ""} ${active.some((current) => current.id === c.id) ? "playing" : ""}`}
+                data-cue-id={c.id}
+                key={c.id}
+              >
+                <input
+                  type="checkbox"
+                  aria-label={`Select cue ${index + 1}`}
+                  checked={marked.has(c.id)}
+                  onChange={(e) =>
+                    setMarked((old) => {
+                      const next = new Set(old);
+                      e.target.checked ? next.add(c.id) : next.delete(c.id);
+                      return next;
+                    })
+                  }
+                />
+                <button
+                  aria-label={`Edit cue ${index + 1}`}
+                  aria-pressed={selected === c.id}
+                  onClick={() => {
+                    setSelected(c.id);
+                    setSplitAt(
+                      cueClock(Math.floor((c.start_ms + c.end_ms) / 2)),
+                    );
+                    seek(c.start_ms);
+                  }}
                 >
-                  <input
-                    type="checkbox"
-                    aria-label={`Select cue ${index + 1}`}
-                    checked={marked.has(c.id)}
-                    onChange={(e) =>
-                      setMarked((old) => {
-                        const next = new Set(old);
-                        e.target.checked ? next.add(c.id) : next.delete(c.id);
-                        return next;
-                      })
-                    }
-                  />
-                  <button
-                    aria-label={`Edit cue ${index + 1}`}
-                    aria-pressed={selected === c.id}
-                    onClick={() => {
-                      setSelected(c.id);
-                      setSplitAt(
-                        cueClock(Math.floor((c.start_ms + c.end_ms) / 2)),
-                      );
-                      seek(c.start_ms);
-                    }}
-                  >
-                    <b>
-                      {index + 1} · {cueClock(c.start_ms)}
-                    </b>
-                    <span>{c.text.slice(0, 100) || "(new cue)"}</span>
-                  </button>
-                </div>
-              ))}
-          </div>
-          <div className="subtitle-editor-toolbar">
-            <button
-              disabled={actualPage === 0}
-              onClick={() => setPage(actualPage - 1)}
-            >
-              Previous cues
-            </button>
-            <span>
-              {actualPage + 1} / {pages}
-            </span>
-            <button
-              disabled={actualPage + 1 >= pages}
-              onClick={() => setPage(actualPage + 1)}
-            >
-              Next cues
-            </button>
+                  <b>
+                    {index + 1} · {cueClock(c.start_ms)}
+                  </b>
+                  <span>{c.text.slice(0, 100) || "(new cue)"}</span>
+                </button>
+              </div>
+            ))}
           </div>
         </section>
-        <section className="subtitle-cue-editor" aria-label="Cue editing">
+        <section
+          className="subtitle-source-preview"
+          aria-label="Source preview"
+        >
           <h3>
             Source preview{" "}
             <StudioInfo
@@ -833,6 +941,9 @@ export function SubtitleEditor({
                   src={videoUrl}
                   controls
                   preload="metadata"
+                  onPlay={() => setPlaying(true)}
+                  onPause={() => setPlaying(false)}
+                  onEnded={() => setPlaying(false)}
                   onTimeUpdate={(e) =>
                     setTime(e.currentTarget.currentTime * 1000)
                   }
@@ -850,6 +961,8 @@ export function SubtitleEditor({
               <p className="muted">No video selected</p>
             )}
           </div>
+        </section>
+        <section className="subtitle-cue-editor" aria-label="Cue editing">
           <div className="subtitle-editor-toolbar">
             <button
               disabled={locked}
@@ -871,7 +984,6 @@ export function SubtitleEditor({
                   };
                 commit((d) => ({ cues: [...d.cues, c] }));
                 setSelected(c.id);
-                setPage(Math.floor(doc.cues.length / 100));
               }}
             >
               Add cue
@@ -1113,192 +1225,202 @@ export function SubtitleEditor({
             )}
             {issues.length > 40 && <p>Showing the first 40 issues.</p>}
           </details>
+          <section
+            className="subtitle-translation"
+            aria-label="Local subtitle translation"
+          >
+            <h3>
+              Local model translation{" "}
+              <StudioInfo
+                title="Local model translation"
+                text="Optional Ollama model plugin. Reelio contacts only 127.0.0.1:11434; use a trusted service configured for local inference, not a cloud proxy. Downloads need internet and several GB of disk/RAM. Cue timings never go to the model; returned identities are checked. Review translations before applying. Original files remain unchanged."
+              />
+            </h3>
+            <div className="subtitle-editor-toolbar">
+              <label>
+                Model plugin
+                <select
+                  value={model}
+                  disabled={locked}
+                  onChange={(e) => setModel(e.target.value)}
+                >
+                  {["gemma3:4b", "qwen3.5:2b", "qwen3.5:4b"].map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                      {installed.includes(m) ? " (installed)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                disabled={!!work || running}
+                onClick={() => void models()}
+              >
+                Refresh local models
+              </button>
+              <button disabled={locked} onClick={() => void start(false)}>
+                Download model plugin
+              </button>
+              <label>
+                Translate into
+                <input
+                  list="subtitle-target-languages"
+                  value={language}
+                  maxLength={64}
+                  disabled={locked}
+                  onChange={(e) => setLanguage(e.target.value)}
+                />
+                <datalist id="subtitle-target-languages">
+                  {languages.map((l) => (
+                    <option key={l} value={l} />
+                  ))}
+                </datalist>
+              </label>
+              <button
+                disabled={locked || !doc.cues.length}
+                onClick={() => void start(true)}
+              >
+                Translate document
+              </button>
+              {running && (
+                <button
+                  onClick={() => void call("subtitle_model_cancel").catch(fail)}
+                >
+                  Cancel model operation
+                </button>
+              )}
+            </div>
+            {modelError && (
+              <p role="status">
+                {modelError} Install/start Ollama separately, then refresh.
+                Manual SRT editing remains available.
+              </p>
+            )}
+            {job?.id && (
+              <div role="status">
+                <p>
+                  {job.kind}: {job.status} · {job.message}
+                </p>
+                {job.total > 0 && (
+                  <progress
+                    aria-label="Local model progress"
+                    max={job.total}
+                    value={job.done}
+                  />
+                )}
+                <span>
+                  {" "}
+                  {job.done} / {job.total}
+                </span>
+                {!running && job.kind === "translate" && job.done > 0 && (
+                  <button
+                    disabled={!!work}
+                    onClick={() => void reviewResults()}
+                  >
+                    Review translated cues
+                  </button>
+                )}
+              </div>
+            )}
+            {review && (
+              <section aria-label="Translation review">
+                <h3>Review translations ({accepted.size} selected)</h3>
+                <div className="subtitle-editor-toolbar">
+                  <button
+                    onClick={() =>
+                      setAccepted(new Set(review.translations.map((t) => t.id)))
+                    }
+                  >
+                    Accept all for review
+                  </button>
+                  <button onClick={() => setAccepted(new Set())}>
+                    Clear translation selection
+                  </button>
+                  <button
+                    disabled={locked || !accepted.size}
+                    onClick={() => {
+                      if (documentKey(review.document) !== serialized) {
+                        setError(
+                          "Document changed; translate the current version again.",
+                        );
+                        return;
+                      }
+                      const map = new Map(
+                        review.translations
+                          .filter((t) => accepted.has(t.id))
+                          .map((t) => [t.id, t.text]),
+                      );
+                      commit((d) => ({
+                        cues: d.cues.map((c) =>
+                          map.has(c.id) ? { ...c, text: map.get(c.id)! } : c,
+                        ),
+                      }));
+                      setNotice(
+                        "Selected translations applied as one undoable edit. Original files and cue timings are unchanged; save a new SRT copy.",
+                      );
+                    }}
+                  >
+                    Apply selected translations
+                  </button>
+                  <button onClick={() => setReview(undefined)}>
+                    Discard translation review
+                  </button>
+                </div>
+                <div className="subtitle-editor-toolbar">
+                  <button
+                    disabled={reviewPage === 0}
+                    onClick={() => setReviewPage((p) => p - 1)}
+                  >
+                    Previous translations
+                  </button>
+                  <span>
+                    {reviewPage + 1} /{" "}
+                    {Math.max(1, Math.ceil(review.translations.length / 100))}
+                  </span>
+                  <button
+                    disabled={
+                      (reviewPage + 1) * 100 >= review.translations.length
+                    }
+                    onClick={() => setReviewPage((p) => p + 1)}
+                  >
+                    Next translations
+                  </button>
+                </div>
+                <div className="subtitle-review-list">
+                  {review.translations
+                    .slice(reviewPage * 100, reviewPage * 100 + 100)
+                    .map((t) => (
+                      <label key={t.id}>
+                        <input
+                          type="checkbox"
+                          aria-label={`Accept translation ${doc.cues.findIndex((c) => c.id === t.id) + 1}`}
+                          checked={accepted.has(t.id)}
+                          onChange={(e) =>
+                            setAccepted((old) => {
+                              const next = new Set(old);
+                              e.target.checked
+                                ? next.add(t.id)
+                                : next.delete(t.id);
+                              return next;
+                            })
+                          }
+                        />
+                        <span>
+                          <b>Original</b>
+                          <p>{doc.cues.find((c) => c.id === t.id)?.text}</p>
+                        </span>
+                        <span>
+                          <b>{review.language || "Translation"}</b>
+                          <p>{t.text}</p>
+                        </span>
+                      </label>
+                    ))}
+                </div>
+              </section>
+            )}
+          </section>
         </section>
       </div>
-      <section
-        className="subtitle-translation"
-        aria-label="Local subtitle translation"
-      >
-        <h3>
-          Local model translation{" "}
-          <StudioInfo
-            title="Local model translation"
-            text="Optional Ollama model plugin. Reelio contacts only 127.0.0.1:11434; use a trusted service configured for local inference, not a cloud proxy. Downloads need internet and several GB of disk/RAM. Cue timings never go to the model; returned identities are checked. Review translations before applying. Original files remain unchanged."
-          />
-        </h3>
-        <div className="subtitle-editor-toolbar">
-          <label>
-            Model plugin
-            <select
-              value={model}
-              disabled={locked}
-              onChange={(e) => setModel(e.target.value)}
-            >
-              {["gemma3:4b", "qwen3.5:2b", "qwen3.5:4b"].map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                  {installed.includes(m) ? " (installed)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button disabled={!!work || running} onClick={() => void models()}>
-            Refresh local models
-          </button>
-          <button disabled={locked} onClick={() => void start(false)}>
-            Download model plugin
-          </button>
-          <label>
-            Translate into
-            <input
-              list="subtitle-target-languages"
-              value={language}
-              maxLength={64}
-              disabled={locked}
-              onChange={(e) => setLanguage(e.target.value)}
-            />
-            <datalist id="subtitle-target-languages">
-              {languages.map((l) => (
-                <option key={l} value={l} />
-              ))}
-            </datalist>
-          </label>
-          <button
-            disabled={locked || !doc.cues.length}
-            onClick={() => void start(true)}
-          >
-            Translate document
-          </button>
-          {running && (
-            <button
-              onClick={() => void call("subtitle_model_cancel").catch(fail)}
-            >
-              Cancel model operation
-            </button>
-          )}
-        </div>
-        {modelError && (
-          <p role="status">
-            {modelError} Install/start Ollama separately, then refresh. Manual
-            SRT editing remains available.
-          </p>
-        )}
-        {job?.id && (
-          <div role="status">
-            <p>
-              {job.kind}: {job.status} · {job.message}
-            </p>
-            {job.total > 0 && (
-              <progress
-                aria-label="Local model progress"
-                max={job.total}
-                value={job.done}
-              />
-            )}
-            <span>
-              {" "}
-              {job.done} / {job.total}
-            </span>
-            {!running && job.kind === "translate" && job.done > 0 && (
-              <button disabled={!!work} onClick={() => void reviewResults()}>
-                Review translated cues
-              </button>
-            )}
-          </div>
-        )}
-        {review && (
-          <section aria-label="Translation review">
-            <h3>Review translations ({accepted.size} selected)</h3>
-            <div className="subtitle-editor-toolbar">
-              <button
-                onClick={() =>
-                  setAccepted(new Set(review.translations.map((t) => t.id)))
-                }
-              >
-                Accept all for review
-              </button>
-              <button onClick={() => setAccepted(new Set())}>
-                Clear translation selection
-              </button>
-              <button
-                disabled={locked || !accepted.size}
-                onClick={() => {
-                  if (documentKey(review.document) !== serialized) {
-                    setError(
-                      "Document changed; translate the current version again.",
-                    );
-                    return;
-                  }
-                  const map = new Map(
-                    review.translations
-                      .filter((t) => accepted.has(t.id))
-                      .map((t) => [t.id, t.text]),
-                  );
-                  commit((d) => ({
-                    cues: d.cues.map((c) =>
-                      map.has(c.id) ? { ...c, text: map.get(c.id)! } : c,
-                    ),
-                  }));
-                  setNotice(
-                    "Selected translations applied as one undoable edit. Original files and cue timings are unchanged; save a new SRT copy.",
-                  );
-                }}
-              >
-                Apply selected translations
-              </button>
-              <button onClick={() => setReview(undefined)}>
-                Discard translation review
-              </button>
-            </div>
-            <div className="subtitle-editor-toolbar">
-              <button
-                disabled={reviewPage === 0}
-                onClick={() => setReviewPage((p) => p - 1)}
-              >
-                Previous translations
-              </button>
-              <span>
-                {reviewPage + 1} /{" "}
-                {Math.max(1, Math.ceil(review.translations.length / 100))}
-              </span>
-              <button
-                disabled={(reviewPage + 1) * 100 >= review.translations.length}
-                onClick={() => setReviewPage((p) => p + 1)}
-              >
-                Next translations
-              </button>
-            </div>
-            <div className="subtitle-review-list">
-              {review.translations
-                .slice(reviewPage * 100, reviewPage * 100 + 100)
-                .map((t) => (
-                  <label key={t.id}>
-                    <input
-                      type="checkbox"
-                      aria-label={`Accept translation ${doc.cues.findIndex((c) => c.id === t.id) + 1}`}
-                      checked={accepted.has(t.id)}
-                      onChange={(e) =>
-                        setAccepted((old) => {
-                          const next = new Set(old);
-                          e.target.checked ? next.add(t.id) : next.delete(t.id);
-                          return next;
-                        })
-                      }
-                    />
-                    <span>
-                      <b>Original</b>
-                      <p>{doc.cues.find((c) => c.id === t.id)?.text}</p>
-                    </span>
-                    <span>
-                      <b>{review.language || "Translation"}</b>
-                      <p>{t.text}</p>
-                    </span>
-                  </label>
-                ))}
-            </div>
-          </section>
-        )}
-      </section>
     </Container>
   );
 }

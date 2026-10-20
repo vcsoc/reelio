@@ -1,6 +1,21 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { chapterTime } from "../chapters/timing";
 import { SeekScheduler } from "./seekScheduler";
+import {
+  Play,
+  Pause,
+  Square,
+  SkipBack,
+  SkipForward,
+  StepBack,
+  StepForward,
+  BookmarkPlus,
+  Volume2,
+  Gauge,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+import { playbackSpeeds, previewFrameMs, frameTarget } from "./playback";
 
 type Props = {
   video: RefObject<HTMLVideoElement | null>;
@@ -8,6 +23,12 @@ type Props = {
   duration: number;
   offset: number;
   sync: (time: number, reveal: boolean) => void;
+  frameRate?: string;
+  hasVideo?: boolean;
+  addChapter?: (time: number) => void;
+  chapterDisabled?: boolean;
+  previousChapter?: () => void;
+  nextChapter?: () => void;
 };
 export function PreviewTransport({
   video,
@@ -15,6 +36,12 @@ export function PreviewTransport({
   duration,
   offset,
   sync,
+  frameRate,
+  hasVideo = true,
+  addChapter,
+  chapterDisabled = false,
+  previousChapter,
+  nextChapter,
 }: Props) {
   const [position, setPosition] = useState(0),
     [scrub, setScrub] = useState<number>();
@@ -27,6 +54,9 @@ export function PreviewTransport({
     offsetRef = useRef(offset),
     frame = useRef<number | undefined>(undefined),
     marker = useRef<number | undefined>(undefined);
+  const [speed, setSpeed] = useState<number>(1),
+    speedRef = useRef(speed);
+  speedRef.current = speed;
   const [volume, setVolume] = useState(0.05),
     volumeRef = useRef(volume);
   syncRef.current = sync;
@@ -92,9 +122,15 @@ export function PreviewTransport({
     setSeekError("");
     if (!el) return;
     el.volume = volumeRef.current;
+    try {
+      el.playbackRate = speedRef.current;
+    } catch {
+      setSpeed(el.playbackRate);
+    }
     const update = () => {
       setReady(el.readyState >= 1 && !el.error);
       setPlaying(!el.paused);
+      setSpeed(el.playbackRate);
       setMediaDuration(
         Number.isFinite(el.duration) ? Math.round(el.duration * 1000) : 0,
       );
@@ -116,6 +152,7 @@ export function PreviewTransport({
       "pause",
       "loadedmetadata",
       "durationchange",
+      "ratechange",
       "loadeddata",
       "error",
     ];
@@ -130,7 +167,17 @@ export function PreviewTransport({
     };
   }, [video, sourceKey, offset]);
   return (
-    <div className="preview-transport" aria-label="Preview transport">
+    <div
+      className="preview-transport"
+      aria-label="Preview transport"
+      onKeyDown={(event) => {
+        if (
+          event.code === "Space" &&
+          (event.target as HTMLElement).closest("button")
+        )
+          event.stopPropagation();
+      }}
+    >
       <input
         className="preview-seek"
         type="range"
@@ -176,18 +223,157 @@ export function PreviewTransport({
         </span>
         <button
           disabled={!ready}
+          className="preview-icon-button"
+          title={playing ? "Pause preview" : "Play preview"}
           aria-label={playing ? "Pause preview" : "Play preview"}
           onClick={() => {
             const el = video.current;
             if (!el) return;
-            if (el.paused) void el.play().catch(() => setPlaying(false));
+            if (el.paused)
+              void el.play().catch((error) => {
+                setPlaying(false);
+                if (error?.name !== "AbortError")
+                  setSeekError(`Playback failed: ${String(error)}`);
+              });
             else el.pause();
           }}
         >
-          {playing ? "Pause" : "Play"}
+          {playing ? (
+            <Pause size={16} aria-hidden="true" />
+          ) : (
+            <Play size={16} aria-hidden="true" />
+          )}
         </button>
-        <label className="preview-volume">
-          Volume
+        <button
+          className="preview-icon-button"
+          title="Stop preview and return to beginning"
+          aria-label="Stop preview"
+          disabled={!ready}
+          onClick={() => {
+            video.current?.pause();
+            seek(0, true);
+          }}
+        >
+          <Square size={15} aria-hidden="true" />
+        </button>
+        <button
+          className="preview-icon-button"
+          title="Skip to beginning"
+          aria-label="Skip to beginning"
+          disabled={!ready}
+          onClick={() => seek(0, true)}
+        >
+          <SkipBack size={16} aria-hidden="true" />
+        </button>
+        {([-1, 1] as const).map((direction) => (
+          <button
+            key={direction}
+            className="preview-icon-button"
+            title={`${direction < 0 ? "Previous" : "Next"} frame (nominal source rate; 25 fps fallback)`}
+            aria-label={direction < 0 ? "Previous frame" : "Next frame"}
+            disabled={!ready || !hasVideo}
+            onClick={() => {
+              const el = video.current;
+              if (!el) return;
+              el.pause();
+              seek(
+                frameTarget(
+                  scheduler.current!.latest ?? el.currentTime * 1000,
+                  direction,
+                  previewFrameMs(frameRate),
+                  end,
+                ),
+                true,
+              );
+            }}
+          >
+            {direction < 0 ? (
+              <StepBack size={16} aria-hidden="true" />
+            ) : (
+              <StepForward size={16} aria-hidden="true" />
+            )}
+          </button>
+        ))}
+        <button
+          className="preview-icon-button"
+          title="Skip to end"
+          aria-label="Skip to end"
+          disabled={!ready}
+          onClick={() => seek(end, true)}
+        >
+          <SkipForward size={16} aria-hidden="true" />
+        </button>
+        <button
+          className="preview-icon-button"
+          title="Add chapter marker at playhead"
+          aria-label="Add chapter marker at playhead"
+          disabled={!ready || !addChapter || chapterDisabled}
+          onClick={() =>
+            addChapter?.(
+              Math.max(
+                0,
+                (scheduler.current!.latest ??
+                  (video.current?.currentTime ?? 0) * 1000) + offsetRef.current,
+              ),
+            )
+          }
+        >
+          <BookmarkPlus size={16} aria-hidden="true" />
+        </button>
+        <button
+          className="preview-icon-button"
+          title="Previous chapter"
+          aria-label="Previous chapter"
+          disabled={!ready || !previousChapter}
+          onClick={previousChapter}
+        >
+          <ChevronLeft size={16} aria-hidden="true" />
+        </button>
+        <button
+          className="preview-icon-button"
+          title="Next chapter"
+          aria-label="Next chapter"
+          disabled={!ready || !nextChapter}
+          onClick={nextChapter}
+        >
+          <ChevronRight size={16} aria-hidden="true" />
+        </button>
+        <label
+          className="preview-speed"
+          title={`Playback speed: ${speed}x (preview only)`}
+        >
+          <Gauge size={15} aria-hidden="true" />
+          <input
+            type="range"
+            aria-label="Preview playback speed"
+            disabled={!ready}
+            aria-valuetext={`${speed}x`}
+            min={0}
+            max={playbackSpeeds.length - 1}
+            step={1}
+            value={Math.max(
+              0,
+              playbackSpeeds.findIndex((value) => value === speed),
+            )}
+            onChange={(event) => {
+              const rate = playbackSpeeds[Number(event.currentTarget.value)];
+              const el = video.current;
+              if (!el || rate === undefined) return;
+              try {
+                el.playbackRate = rate;
+                setSpeed(el.playbackRate);
+                setSeekError("");
+              } catch {
+                setSeekError(
+                  `This playback engine does not support ${rate}x speed.`,
+                );
+              }
+            }}
+          />
+          <span>{speed}x</span>
+        </label>
+        <label className="preview-volume" title="Preview volume">
+          <Volume2 size={15} aria-hidden="true" />
           <input
             type="range"
             aria-label="Preview volume"

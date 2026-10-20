@@ -13,6 +13,12 @@
   width: calc(min(var(--pool-width, 280px), 35vw) - 84px);
   min-width: 60px;
 }
+.toolbar-global-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
 .toolbar-inspector-actions {
   display: flex;
   align-items: center;
@@ -286,15 +292,86 @@
   flex-shrink: 0;
 }
 .global-feedback {
-  flex: none;
-  max-height: 150px;
+  position: fixed;
+  top: 54px;
+  right: 16px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(60vh, 500px);
   overflow: auto;
-  z-index: 20;
+  z-index: 80;
+  display: grid;
+  gap: 10px;
+  pointer-events: none;
+}
+.global-feedback > * {
+  pointer-events: auto;
 }
 .global-feedback .notice {
   margin: 0;
-  border-radius: 0;
-  padding: 7px 14px;
+  border-radius: 10px;
+  padding: 14px;
+  box-shadow: 0 8px 32px #0005;
+}
+.toast {
+  align-items: flex-start;
+  animation: toast-enter 160ms ease-out;
+}
+.toast > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.toast-message {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}
+.toolbar .macos-controls {
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  margin-left: 0;
+  border-left: 0;
+}
+.toolbar .macos-controls button {
+  width: 13px;
+  height: 13px;
+  min-height: 0;
+  border-radius: 50%;
+  background: #febc2e;
+  color: #292929;
+  border: 1px solid #0002;
+}
+.toolbar .macos-controls button:nth-child(2) {
+  background: #28c840;
+}
+.toolbar .macos-controls .window-close {
+  order: -1;
+  background: #ff5f57;
+}
+.toolbar .macos-controls button svg {
+  width: 9px;
+  height: 9px;
+  opacity: 0;
+}
+.toolbar .macos-controls:hover button svg,
+.toolbar .macos-controls button:focus-visible svg {
+  opacity: 1;
 }
 .global-feedback .working {
   padding: 7px 14px;
@@ -856,8 +933,20 @@
   flex-wrap: wrap;
 }
 .preview-transport-buttons button {
-  min-width: 56px;
-  padding: 3px 10px;
+  min-width: 28px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+.preview-speed input {
+  width: 100px !important;
+}
+.preview-speed span {
+  min-width: 30px;
+  font-variant-numeric: tabular-nums;
 }
 .preview-clock {
   font: 10px monospace;
@@ -1211,9 +1300,9 @@
     scroll-margin-top: 88px;
   }
   #root .global-feedback {
-    position: sticky;
-    top: 80px;
-    z-index: 30;
+    position: fixed;
+    top: 120px;
+    z-index: 80;
   }
   #root .timeline-layout {
     display: flex;
@@ -1318,5 +1407,30 @@
   }
   .lane-name {
     max-width: 200px;
+  }
+}
+/* Studio owns the complete work area without unmounting the timeline or drafts. */
+#root .timeline-layout[data-section="subtitles"] > .sidebar,
+#root .timeline-layout[data-section="subtitles"] > .timeline-viewer,
+#root .timeline-layout[data-section="subtitles"] > .pool-divider,
+#root .timeline-layout[data-section="subtitles"] .workspace-divider {
+  display: none;
+}
+@media (min-width: 1101px) {
+  #root .timeline-layout[data-section="subtitles"] {
+    grid-template-areas: "timeline timeline inspector";
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .toolbar {
+    position: relative;
+  }
+  .toolbar .right-sidebar-toggle[aria-expanded="true"] {
+    position: absolute;
+    right: calc(min(var(--inspector-width, 440px), 55vw) - 32px);
+  }
+}
+@media (max-width: 1100px) {
+  #root .timeline-layout[data-section="subtitles"] .lower-workspace {
+    min-height: 650px;
   }
 }

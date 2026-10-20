@@ -20,9 +20,9 @@ From the repository root:
 
 This builds the release application, stages checksummed local artifacts, and runs `makepkg` without sudo or dependency installation. Build prerequisites include the normal Tauri toolchain, `makepkg`, Python 3, and `desktop-file-validate`. To package an already verified release executable without rebuilding, use `./scripts/package-arch.sh --reuse-build`. A manual Cargo production build must enable the embedded frontend: `cargo build --locked --release -p reelio-desktop --features tauri/custom-protocol`; a bare Cargo release build can still use Tauri's development URL and is not an acceptable installed candidate.
 
-Output: `target/release/bundle/arch/reelio-0.2.0-3-x86_64.pkg.tar.zst` (unsigned developer-preview candidate; installation is separate from build verification).
+Output: `target/release/bundle/arch/reelio-0.2.0-6-x86_64.pkg.tar.zst` (unsigned developer-preview candidate; installation is separate from build verification).
 
-About Reelio stamps Cargo's version plus the tracked numeric package revision (`0.2.0-3`). Rebuild the native executable after changing `pkgrel`; `--reuse-build` is only for that matching build. The optional Linux About homepage action uses the desktop's `/usr/bin/xdg-open` (`xdg-utils`); absence/failure is shown in the dialog rather than silently navigating the editor. Windows/macOS browser launchers are implemented but not qualified by the Linux package checks.
+About Reelio stamps Cargo's version plus the tracked numeric package revision (`0.2.0-6` for the current local update; the latest published Linux preview remains `0.2.0-3`). Rebuild the native executable after changing `pkgrel`; `--reuse-build` is only for that matching build. The optional Linux About homepage action uses the desktop's `/usr/bin/xdg-open` (`xdg-utils`); absence/failure is shown in the dialog rather than silently navigating the editor. Windows/macOS browser launchers are implemented but not qualified by the Linux package checks.
 
 Install the verified built executable for this user when ready:
 

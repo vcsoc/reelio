@@ -1,6 +1,5 @@
 import { Info, Menu, Download } from "lucide-react";
 import { UpdateDialog } from "../features/updates/UpdateDialog";
-import { openSubtitleEditor } from "../features/subtitles/SubtitleEditor";
 import { call, desktop } from "../services/desktop";
 import {
   useEffect,
@@ -150,17 +149,6 @@ export function ProjectMenu({ actions }: { actions: Action[] }) {
               )}
             </button>
           ))}
-          <button
-            type="button"
-            role="menuitem"
-            disabled={!desktop}
-            onClick={() => {
-              close(true);
-              openSubtitleEditor();
-            }}
-          >
-            Subtitle Studio
-          </button>
           <button
             type="button"
             role="menuitem"

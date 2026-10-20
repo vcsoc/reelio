@@ -1,7 +1,7 @@
 # Generated with checksums for the local release artifacts by scripts/package-arch.sh.
 pkgname=reelio
 pkgver=@VERSION@
-pkgrel=3
+pkgrel=6
 pkgdesc='Local-first media container editor (developer preview)'
 arch=('x86_64')
 license=('MIT')

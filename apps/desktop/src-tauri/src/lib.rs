@@ -191,14 +191,31 @@ async fn project_open(
     state: State<'_, AppState>,
 ) -> Result<Option<Project>, String> {
     let s = state.inner().clone();
-    blocking(move||{
-        let Some(f)=app.dialog().file().set_directory(preferences::default_folder(&app,&s)?).add_filter("Reelio project",&["reelio"]).blocking_pick_file() else{return Ok(None)};
-        let path=f.into_path().map_err(|e|e.to_string())?;let p=s.open_project(&path)?;
-        let description=p.assets.iter().map(|a|a.path.to_string_lossy().into_owned()).collect::<Vec<_>>().join("\n");
-        if !p.assets.is_empty() && !app.dialog().message(format!("This project references these local sources:\n\n{description}\n\nAllow Reelio to inspect these files? Missing sources can be relinked in Media information.")).title("Authorize project sources").kind(MessageDialogKind::Warning).buttons(MessageDialogButtons::YesNo).blocking_show(){return Err("Project source access was not authorized".into());}
-        for a in &p.assets{if a.path.is_file(){grant(&app,&s,&a.path)?;}}
-        s.storage.lock().map_err(|_|"Storage lock failed")?.recent(&path.to_string_lossy(),"project")?;Ok(Some(p))
-    }).await
+    blocking(move || {
+        let Some(f) = app
+            .dialog()
+            .file()
+            .set_directory(preferences::default_folder(&app, &s)?)
+            .add_filter("Reelio project", &["reelio"])
+            .blocking_pick_file()
+        else {
+            return Ok(None);
+        };
+        let path = f.into_path().map_err(|e| e.to_string())?;
+        let p = s.open_project_with_sources(&path)?;
+        // Explicitly opening a validated project grants its individual referenced files, not their directories.
+        for a in &p.assets {
+            if a.path.is_file() {
+                grant(&app, &s, &a.path)?;
+            }
+        }
+        s.storage
+            .lock()
+            .map_err(|_| "Storage lock failed")?
+            .recent(&path.to_string_lossy(), "project")?;
+        Ok(Some(p))
+    })
+    .await
 }
 #[tauri::command]
 async fn project_save(
@@ -422,6 +439,14 @@ enum WindowAction {
     Minimize,
     ToggleMaximize,
     Close,
+    ConfirmClose,
+}
+#[tauri::command]
+fn window_platform() -> serde_json::Value {
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP")
+        .unwrap_or_default()
+        .to_lowercase();
+    serde_json::json!({"os":std::env::consts::OS,"tiling": cfg!(target_os="linux") && (desktop.contains("hyprland") || std::env::var_os("OMARCHY_PATH").is_some())})
 }
 #[tauri::command]
 fn window_action(window: tauri::WebviewWindow, action: WindowAction) -> Result<bool, String> {
@@ -436,7 +461,23 @@ fn window_action(window: tauri::WebviewWindow, action: WindowAction) -> Result<b
                 window.maximize()
             }
         }
-        // close() retains the authoritative active-export/component-repair close guards.
+        WindowAction::ConfirmClose => {
+            let s = window.state::<AppState>();
+            let service = window.state::<Arc<reelio_subtitles::local_model::Service>>();
+            let updates = window.state::<Arc<reelio_updates::UpdateService>>();
+            if s.active_job()
+                || s.dependencies.is_repairing()
+                || updates.downloading()
+                || service.is_active()
+            {
+                return Err("Finish or cancel the active operation before quitting Reelio.".into());
+            }
+            if service.protected() && service.draft()?.is_none() {
+                return Err("Save the subtitle recovery draft before quitting Reelio.".into());
+            }
+            return window.destroy().map(|()| false).map_err(|e| e.to_string());
+        }
+        // Native and custom close requests share the frontend confirmation flow.
         WindowAction::Close => {
             return window
                 .close()
@@ -489,6 +530,7 @@ pub fn run() {
                 interface_zoom,
                 app_version,
                 window_action,
+                window_platform,
                 open_project_homepage,
                 updates::update_check,
                 updates::update_download,
@@ -550,15 +592,12 @@ pub fn run() {
                 }
                 tauri::WindowEvent::CloseRequested { api, .. } => {
                     let s = window.state::<AppState>();
-                    if window.state::<Arc<reelio_subtitles::local_model::Service>>().protected() {
-                        api.prevent_close();
-                        let _=window.emit("subtitle:close-blocked",());
-                        return;
-                    }
                     let updates=window.state::<Arc<reelio_updates::UpdateService>>();
+                    api.prevent_close();
                     if s.active_job() || s.dependencies.is_repairing() || updates.downloading() {
-                        api.prevent_close();
                         let _ = window.emit("app:close-blocked", ());
+                    } else {
+                        let _ = window.emit("app:close-requested", ());
                     }
                 }
                 _ => {}

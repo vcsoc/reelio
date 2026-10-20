@@ -55,9 +55,20 @@ test.beforeEach(async ({ page }) => {
           }
           if (cmd === "subtitle_editor_open")
             return {
-              document: structuredClone(fixture),
+              document: localStorage.getItem("subtitle-test-many")
+                ? {
+                    cues: Array.from({ length: 205 }, (_, index) => ({
+                      id: `many-${index}`,
+                      start_ms: index * 1000,
+                      end_ms: index * 1000 + 800,
+                      text: `Loaded cue ${index + 1}`,
+                    })),
+                  }
+                : structuredClone(fixture),
               path: "/media/original.srt",
             };
+          if (cmd === "subtitle_preview")
+            return "WEBVTT\n\n00:00:01.111 --> 00:00:02.222\nEmbedded text\n";
           if (cmd === "subtitle_editor_save") {
             if (localStorage.getItem("subtitle-test-save-failure"))
               throw Error(
@@ -138,6 +149,92 @@ test.beforeEach(async ({ page }) => {
     .getByRole("button", { name: "Open subtitle editor", exact: true })
     .click();
 });
+test("all cues load without pagination, arrows navigate, and playback follows its cue", async ({
+  page,
+}) => {
+  await page.goto("/native-tests/subtitles.html?video=/fixture-video.mp4");
+  await page
+    .getByRole("button", { name: "Open subtitle editor", exact: true })
+    .click();
+  await page.evaluate(() => {
+    localStorage.setItem("subtitle-test-many", "yes");
+    window.dispatchEvent(
+      new CustomEvent("reelio:subtitle-source", {
+        detail: { path: "/media/original.srt" },
+      }),
+    );
+  });
+  const editor = page.getByRole("dialog", {
+    name: "Subtitle Studio",
+    exact: true,
+  });
+  await expect(editor.locator(".subtitle-cue-row")).toHaveCount(205);
+  await expect(
+    editor.getByRole("button", { name: "Next cues", exact: true }),
+  ).toHaveCount(0);
+  const first = editor.getByRole("button", { name: "Edit cue 1", exact: true });
+  await first.click();
+  await first.press("ArrowRight");
+  await expect(
+    editor.getByRole("textbox", { name: "Subtitle cue text", exact: true }),
+  ).toHaveValue("Loaded cue 2");
+  await page.keyboard.press("ArrowLeft");
+  await expect(
+    editor.getByRole("textbox", { name: "Subtitle cue text", exact: true }),
+  ).toHaveValue("Loaded cue 1");
+  await editor.locator("video").evaluate((video: HTMLVideoElement) => {
+    Object.defineProperty(video, "paused", {
+      configurable: true,
+      value: false,
+    });
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 150.2,
+    });
+    video.dispatchEvent(new Event("play"));
+    video.dispatchEvent(new Event("timeupdate"));
+  });
+  await expect(editor.locator('[data-cue-id="many-150"]')).toHaveClass(
+    /playing/,
+  );
+  await expect
+    .poll(() =>
+      editor.locator(".subtitle-cue-list").evaluate((list) => list.scrollTop),
+    )
+    .toBeGreaterThan(0);
+});
+
+test("embedded text subtitle context actions open an unsaved editable copy", async ({
+  page,
+}) => {
+  await page.evaluate(() =>
+    window.dispatchEvent(
+      new CustomEvent("reelio:subtitle-source", {
+        detail: { project: {}, trackId: "embedded-text" },
+      }),
+    ),
+  );
+  const editor = page.getByRole("dialog", {
+    name: "Subtitle Studio",
+    exact: true,
+  });
+  await expect(
+    editor.getByRole("textbox", { name: "Subtitle cue text", exact: true }),
+  ).toHaveValue("Embedded text");
+  await expect(
+    editor.getByText(/Opened a converted text-subtitle copy/),
+  ).toBeVisible();
+  await editor
+    .getByRole("button", { name: "Save SRT copy", exact: true })
+    .click();
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("subtitle-test-saved") || "null"),
+  );
+  expect(saved.cues[0].start_ms).toBe(1111);
+  expect(saved.cues[0].end_ms).toBe(2222);
+});
+
 test("SRT editing creates, splits, merges, undoes, saves a copy and recovers drafts", async ({
   page,
 }) => {

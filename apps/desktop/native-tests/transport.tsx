@@ -23,7 +23,8 @@ const assert = (ok: unknown, message: string) => {
 };
 function Harness() {
   const video = useRef<HTMLVideoElement>(null),
-    [marker, setMarker] = useState(0);
+    [marker, setMarker] = useState(0),
+    [chapter, setChapter] = useState<number>();
   const media = new URLSearchParams(location.search).get("media") || "";
   const decoded = useRef({ time: -1, frames: 0 }),
     samples = useRef<number[]>([]),
@@ -120,12 +121,39 @@ function Harness() {
       paused: el.paused,
     });
     if (!second) await (window as any).prepareNativeDrag(true);
-    else
+    else {
+      const initial = decoded.current.time;
+      let count = decoded.current.frames;
+      document
+        .querySelector<HTMLButtonElement>('button[aria-label="Next frame"]')!
+        .click();
+      await wait(() => decoded.current.frames > count && !el.seeking);
+      assert(
+        Math.abs(decoded.current.time - initial - 1 / 30) < 0.002,
+        "Next-frame control did not decode the adjacent 30 fps frame",
+      );
+      count = decoded.current.frames;
+      document
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="Previous frame"]',
+        )!
+        .click();
+      await wait(() => decoded.current.frames > count && !el.seeking);
+      assert(
+        Math.abs(decoded.current.time - initial) < 0.002,
+        "Previous-frame control did not return to the original decoded frame",
+      );
+      send({
+        kind: "frame-controls-evidence",
+        initial,
+        decoded: decoded.current,
+      });
       send({
         kind: "passed",
         message:
-          "Physical forward/backward range dragging remains responsive and commits real paused decoded frames; markers preserve source offset",
+          "Physical forward/backward scrubbing and frame buttons commit real paused decoded frames; markers preserve source offset",
       });
+    }
   };
   return (
     <main style={{ maxWidth: 900, padding: 24, margin: "auto" }}>
@@ -143,9 +171,12 @@ function Harness() {
         video={video}
         sourceKey={media}
         duration={8000}
+        frameRate={new URLSearchParams(location.search).get("fps") || undefined}
         offset={1200}
         sync={(time) => setMarker(time)}
+        addChapter={setChapter}
       />
+      <output id="chapter-marker">{chapter}</output>
       <output id="output-marker" data-time={marker}>
         Output marker: {marker} ms
       </output>

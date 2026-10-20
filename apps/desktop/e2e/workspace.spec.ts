@@ -112,8 +112,7 @@ test("workspace layout preferences persist and artwork uses the lower workspace"
     expect(leftButton.x + leftButton.width).toBeGreaterThan(
       leftBox.x + leftBox.width - 10,
     );
-    expect(rightButton.x).toBeGreaterThanOrEqual(inspectorBox.x);
-    expect(rightButton.x).toBeLessThan(inspectorBox.x + 15);
+    expect(Math.abs(rightButton.x - inspectorBox.x)).toBeLessThan(2);
     expect(lowerBox.x).toBeGreaterThan(initialLower.x + 100);
     expect(lowerBox.x).toBeGreaterThanOrEqual(leftBox.x + leftBox.width - 1);
     expect(
@@ -282,6 +281,9 @@ test("project menu, toolbar tools, borderless title and interface zoom", async (
   await trigger.press("ArrowDown");
   const menu = page.getByRole("menu", { name: "Project actions" });
   await expect(menu.getByRole("menuitem")).toHaveCount(7);
+  await expect(
+    menu.getByRole("menuitem", { name: "Subtitle Studio", exact: true }),
+  ).toHaveCount(0);
   await expect(
     menu.getByRole("menuitem", { name: "Add tracks", exact: true }),
   ).toHaveCount(0);
@@ -947,6 +949,28 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
               return JSON.parse(
                 localStorage.getItem("test-saved-project") || "null",
               );
+            }
+            if (cmd === "subtitle_editor_open") {
+              localStorage.setItem("test-studio-source", args.path || "");
+              return {
+                path: args.path || "/media/subtitles.srt",
+                document: {
+                  cues: [
+                    {
+                      id: "studio-1",
+                      start_ms: 1000,
+                      end_ms: 2000,
+                      text: "Opened from timeline",
+                    },
+                    {
+                      id: "studio-2",
+                      start_ms: 3000,
+                      end_ms: 4000,
+                      text: "Next timeline cue",
+                    },
+                  ],
+                },
+              };
             }
             if (cmd === "project_save") {
               localStorage.setItem(
@@ -2021,6 +2045,27 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
     .locator(".lower-workspace")
     .getByRole("region", { name: "Subtitle Studio", exact: true });
   await expect(studio).toBeVisible();
+  await expect(page.locator(".timeline-viewer")).toBeHidden();
+  await expect(page.locator(".timeline-layout > .sidebar")).toBeHidden();
+  if (testInfo.project.name === "desktop") {
+    const main = await page
+      .getByRole("main", { name: "Editor workspace" })
+      .boundingBox();
+    const box = await studio.boundingBox();
+    expect(Math.abs(box!.y - main!.y)).toBeLessThan(3);
+    const panel = (await page.locator(".inspector").boundingBox())!;
+    const toggle = (await page
+      .getByRole("button", { name: "Collapse right sidebar", exact: true })
+      .boundingBox())!;
+    expect(Math.abs(toggle.x - panel.x)).toBeLessThan(2);
+    const list = await studio.locator(".subtitle-cue-browser").boundingBox();
+    const preview = await studio
+      .locator(".subtitle-source-preview")
+      .boundingBox();
+    const fields = await studio.locator(".subtitle-cue-editor").boundingBox();
+    expect(list!.x + list!.width).toBeLessThanOrEqual(preview!.x);
+    expect(preview!.x + preview!.width).toBeLessThanOrEqual(fields!.x);
+  }
   await expect(page.locator(".inspector .subtitle-tools")).toHaveCount(0);
   await expect(
     page.getByRole("dialog", { name: "Subtitle Studio", exact: true }),
@@ -2029,6 +2074,16 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
   await studio
     .getByRole("textbox", { name: "Subtitle cue text", exact: true })
     .fill("Studio draft survives navigation");
+  if (testInfo.project.name === "desktop") {
+    await expect(studio.locator(".subtitle-cue-editor")).toHaveCSS(
+      "overflow-y",
+      "auto",
+    );
+    await page.screenshot({
+      path: testInfo.outputPath("subtitle-studio-three-columns.png"),
+      fullPage: true,
+    });
+  }
   await page.getByRole("tab", { name: "Timeline", exact: true }).click();
   await expect(studio).toBeHidden();
   await page.getByRole("tab", { name: "Subtitle Studio", exact: true }).click();
@@ -2092,6 +2147,18 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
   await expect(addTracks).toBeEnabled();
   await expect(editor.locator(".lane-audio")).toHaveCount(3);
   await expect(editor.locator(".lane-subtitle")).toHaveCount(2);
+  await editor
+    .locator(".lane-subtitle .timeline-clip")
+    .first()
+    .click({ button: "right" });
+  await page
+    .getByRole("menuitem", { name: "Open in studio", exact: true })
+    .click();
+  await expect(studio).toBeVisible();
+  await expect(
+    studio.getByRole("textbox", { name: "Subtitle cue text", exact: true }),
+  ).toHaveValue("Opened from timeline");
+  await page.getByRole("tab", { name: "Timeline", exact: true }).click();
   const musicLane = editor.getByRole("article", {
     name: "audio timeline Music",
     exact: true,
@@ -2581,6 +2648,9 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
   await expect(
     page.getByRole("img", { name: "Project poster / cover", exact: true }),
   ).toBeVisible();
+  // Dismiss the floating save toast before measuring physical pointer coordinates.
+  for (const button of await page.locator(".toast button").all())
+    await button.click();
   const seek = page.getByRole("slider", {
     name: "Preview seek bar",
     exact: true,
@@ -2608,6 +2678,21 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
         get: () => true,
       }),
     );
+  // Visibility alone does not put the mobile viewer inside the scroll viewport.
+  await seek.evaluate((element) => element.scrollIntoView({ block: "center" }));
+  await expect
+    .poll(() =>
+      seek.evaluate((element) => {
+        const r = element.getBoundingClientRect();
+        return (
+          document.elementFromPoint(
+            r.left + r.width / 2,
+            r.top + r.height / 2,
+          ) === element
+        );
+      }),
+    )
+    .toBe(true);
   const dragBar = (await seek.boundingBox())!;
   await page.mouse.move(
     dragBar.x + dragBar.width * 0.6,

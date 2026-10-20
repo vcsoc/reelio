@@ -104,6 +104,15 @@ impl Application {
         }
         Ok(())
     }
+    pub fn open_project_with_sources(&self, path: &Path) -> Result<Project, String> {
+        let project = self.open_project(path)?;
+        for asset in &project.assets {
+            if asset.path.is_file() {
+                self.authorize(&asset.path)?;
+            }
+        }
+        Ok(project)
+    }
     pub fn open_project(&self, path: &Path) -> Result<Project, String> {
         if fs::metadata(path).map_err(|e| e.to_string())?.len() > 4 * 1024 * 1024 {
             return Err("Project exceeds 4 MiB limit".into());
@@ -309,6 +318,39 @@ mod tests {
         assert!(a.require_authorized(&source).is_err());
         a.authorize(&source).unwrap();
         assert!(a.require_authorized(&source).is_ok());
+    }
+    #[test]
+    fn explicitly_opened_projects_grant_only_existing_referenced_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let app = Application::new(&root.join("db")).unwrap();
+        let source = root.join("source.mkv");
+        let neighbor = root.join("private.mkv");
+        let missing = root.join("missing.srt");
+        fs::write(&source, "fixture").unwrap();
+        fs::write(&neighbor, "not selected").unwrap();
+        let mut project = Project::default();
+        for path in [&source, &missing] {
+            project.assets.push(Asset {
+                id: id(),
+                path: path.clone(),
+                format: "matroska".into(),
+                size: 7,
+                modified_ms: 0,
+                duration_ms: None,
+                streams: vec![],
+                metadata: Default::default(),
+                chapters: vec![],
+            });
+        }
+        let path = root.join("selected.reelio");
+        app.save_project(&project, &path).unwrap();
+        let opened = app.open_project_with_sources(&path).unwrap();
+        assert_eq!(opened.assets.len(), 2);
+        assert!(app.require_authorized(&source).is_ok());
+        assert!(app.require_authorized(&neighbor).is_err());
+        assert!(app.require_authorized(&root).is_err());
+        assert!(app.require_authorized(&missing).is_err());
     }
     #[test]
     fn empty_project_can_be_saved_and_reopened() {

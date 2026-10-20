@@ -99,7 +99,7 @@ page_url = sys.argv[1]
 if url.path == "/native-tests/transport.html":
     fixture = tempfile.NamedTemporaryFile(prefix="transport-", suffix=".mp4", dir=root.parent / "apps/desktop/native-tests")
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=8", "-an", "-c:v", "libx264", "-preset", "ultrafast", "-g", "30", "-pix_fmt", "yuv420p", "-movflags", "+faststart", fixture.name], check=True)
-    page_url += "?" + urlencode({"media": "/native-tests/" + Path(fixture.name).name})
+    page_url += "?" + urlencode({"media": "/native-tests/" + Path(fixture.name).name, "fps": "30/1"})
 view.load_uri(page_url)
 GLib.timeout_add_seconds(60, lambda: finish(False, "Native editor regression timed out"))
 Gtk.main()

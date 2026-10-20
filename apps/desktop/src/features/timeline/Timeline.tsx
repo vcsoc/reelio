@@ -394,6 +394,33 @@ export function Timeline(props: Props) {
                   </button>
                 ) : (
                   <>
+                    {menuTrack &&
+                      sourceStream(props.project, menuTrack)?.kind ===
+                        "subtitle" && (
+                        <button
+                          role="menuitem"
+                          disabled={props.busy}
+                          onClick={() => {
+                            const asset = props.project.assets.find(
+                              (a) => a.id === menuTrack.asset_id,
+                            );
+                            setMenu(undefined);
+                            window.dispatchEvent(
+                              new CustomEvent("reelio:subtitle-source", {
+                                detail:
+                                  asset && /\.srt$/i.test(asset.path)
+                                    ? { path: asset.path }
+                                    : {
+                                        project: props.project,
+                                        trackId: menuTrack.id,
+                                      },
+                              }),
+                            );
+                          }}
+                        >
+                          Open in studio
+                        </button>
+                      )}
                     <button
                       role="menuitem"
                       onClick={() => {

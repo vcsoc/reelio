@@ -6,6 +6,7 @@
   padding: 18px;
 }
 .subtitle-studio-dock {
+  container-type: inline-size;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -107,10 +108,14 @@
 }
 .subtitle-editor-grid {
   display: grid;
-  grid-template-columns: minmax(230px, 0.7fr) minmax(0, 2fr);
+  grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1.4fr) minmax(
+      260px,
+      1fr
+    );
   gap: 16px;
 }
 .subtitle-cue-browser,
+.subtitle-source-preview,
 .subtitle-cue-editor {
   min-width: 0;
 }
@@ -130,6 +135,51 @@
 }
 .subtitle-cue-row.selected {
   background: var(--selection);
+}
+.subtitle-cue-row.playing {
+  box-shadow: inset 3px 0 var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel-2));
+}
+.subtitle-cue-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 54px;
+}
+@media (min-width: 1001px) {
+  .settings-dialog.subtitle-editor.subtitle-studio {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .subtitle-studio > :not(.subtitle-editor-grid) {
+    flex-shrink: 0;
+  }
+  .subtitle-studio .subtitle-editor-grid {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .subtitle-studio .subtitle-cue-browser {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .subtitle-studio .subtitle-cue-list {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+  }
+  .subtitle-studio .subtitle-cue-editor {
+    overflow-y: auto;
+    min-height: 0;
+    padding-right: 8px;
+  }
+  .subtitle-studio .subtitle-source-preview {
+    min-height: 0;
+    overflow: auto;
+  }
+  .subtitle-studio .subtitle-editor-player video {
+    max-height: calc(100vh - 260px);
+  }
 }
 .subtitle-cue-row button {
   flex: 1;
@@ -215,6 +265,27 @@
 .subtitle-review-list p {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+@container (max-width: 760px) {
+  .subtitle-studio {
+    display: block !important;
+    overflow: auto !important;
+  }
+  .subtitle-studio .subtitle-editor-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    overflow: visible;
+  }
+  .subtitle-studio .subtitle-cue-browser {
+    display: block;
+  }
+  .subtitle-studio .subtitle-cue-list {
+    max-height: 220px;
+  }
+  .subtitle-studio .subtitle-cue-editor,
+  .subtitle-studio .subtitle-source-preview {
+    overflow: visible;
+  }
 }
 @media (max-width: 700px) {
   .subtitle-editor-grid {

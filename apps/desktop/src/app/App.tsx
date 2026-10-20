@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Timeline } from "../features/timeline/Timeline";
 import { MediaPool } from "../features/timeline/MediaPool";
 import { ProjectMenu } from "../components/ProjectMenu";
+import { Toast } from "../components/Toast";
 import {
   CoverPreview,
   coverDropHit,
@@ -277,15 +278,59 @@ export default function App() {
     revision: number;
   }>();
   const dirty = JSON.stringify(p) !== saved;
-  const windowChrome = useWindowChrome(
-    setError,
-    () =>
-      !busy &&
-      (!dirty ||
-        confirm(
-          "Close Reelio and discard unsaved changes? Choose Cancel to save your project first.",
-        )),
-  );
+  const subtitleCloseGuard = useRef<(() => Promise<boolean>) | null>(null);
+  const quitting = useRef(false);
+  const closeRequested = useRef(async () => {});
+  closeRequested.current = async () => {
+    if (quitting.current) return;
+    quitting.current = true;
+    try {
+      if (busy)
+        throw Error("Finish the active operation before quitting Reelio.");
+      if (
+        dirty &&
+        !confirm(
+          "Close Reelio and discard unsaved project changes? Choose Cancel to save your project first.",
+        )
+      )
+        return;
+      if (!subtitleCloseGuard.current)
+        throw Error(
+          "Subtitle recovery is not ready yet. Try quitting again in a moment.",
+        );
+      if (!(await subtitleCloseGuard.current())) {
+        setNotice(
+          "Quit canceled. Save your subtitle copy or finish/cancel its active operation before trying again.",
+        );
+        return;
+      }
+      await call("window_action", { action: "confirm_close" });
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      quitting.current = false;
+    }
+  };
+  useEffect(() => {
+    if (!desktop) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen(
+      "app:close-requested",
+      () => void closeRequested.current(),
+    ).then((fn) => {
+      if (disposed) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+  const windowChrome = useWindowChrome(setError, () => {
+    void closeRequested.current();
+    return false;
+  });
   const [previewAssetId, setPreviewAssetId] = useState<string>();
   const previewSources = p.assets.filter(
     (a) =>
@@ -910,6 +955,11 @@ export default function App() {
   ]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (desktop && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "w") {
+        e.preventDefault();
+        windowChrome.requestClose();
+        return;
+      }
       if ((e.target as HTMLElement)?.closest(".subtitle-studio")) return;
       const editing = (e.target as HTMLElement)?.matches(
         "input,textarea,select,[contenteditable]",
@@ -983,6 +1033,7 @@ export default function App() {
         aria-label="Window top bar"
         onMouseDown={windowChrome.onMouseDown}
       >
+        {windowChrome.leadingControls}
         <a
           className="brand"
           href="#"
@@ -1025,6 +1076,13 @@ export default function App() {
               icon: <Save size={17} />,
               disabled: !!busy,
               select: () => void save(),
+            },
+            {
+              label: "Quit Reelio",
+              shortcut: "Ctrl/Cmd+W",
+              icon: <X size={17} />,
+              disabled: !desktop,
+              select: windowChrome.requestClose,
             },
           ]}
         />
@@ -1077,9 +1135,36 @@ export default function App() {
             ))}
           </Tabs.List>
         </nav>
-        <div className="toolbar-inspector-actions">
+        <div className="toolbar-global-actions">
           <button
             className="icon-button"
+            title="Undo (Ctrl/Cmd+Z)"
+            aria-label="Undo"
+            disabled={!past.length}
+            onClick={undo}
+          >
+            <Undo2 size={18} />
+          </button>
+          <button
+            className="icon-button"
+            title="Redo (Ctrl/Cmd+Shift+Z)"
+            aria-label="Redo"
+            disabled={!future.length}
+            onClick={redo}
+          >
+            <Redo2 size={18} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Settings"
+            onClick={() => setSettings(true)}
+          >
+            <Settings2 size={18} />
+          </button>
+        </div>
+        <div className="toolbar-inspector-actions">
+          <button
+            className="icon-button right-sidebar-toggle"
             title={
               layout.rightCollapsed
                 ? "Expand right sidebar"
@@ -1106,31 +1191,6 @@ export default function App() {
             )}
           </button>
           <div className="toolbar-inspector-spacer" />
-          <button
-            className="icon-button"
-            title="Undo (Ctrl/Cmd+Z)"
-            aria-label="Undo"
-            disabled={!past.length}
-            onClick={undo}
-          >
-            <Undo2 size={18} />
-          </button>
-          <button
-            className="icon-button"
-            title="Redo (Ctrl/Cmd+Shift+Z)"
-            aria-label="Redo"
-            disabled={!future.length}
-            onClick={redo}
-          >
-            <Redo2 size={18} />
-          </button>
-          <button
-            className="icon-button"
-            aria-label="Settings"
-            onClick={() => setSettings(true)}
-          >
-            <Settings2 size={18} />
-          </button>
           <button
             className="primary"
             onClick={() => void validateExport()}
@@ -1270,6 +1330,7 @@ export default function App() {
           >
             {" "}
             <SubtitleEditor
+              closeGuard={subtitleCloseGuard}
               embedded
               visible={tab === "subtitles"}
               onClose={() => setTab("timeline")}
@@ -1466,31 +1527,17 @@ export default function App() {
                       recheck={recheckDependencies}
                     />
                     {error && (
-                      <div className="notice error" role="alert">
-                        <div>
-                          <strong>
-                            That operation could not be completed.
-                          </strong>
-                          <p>{error}</p>
-                        </div>
-                        <button
-                          aria-label="Dismiss error"
-                          onClick={() => setError(undefined)}
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
+                      <Toast
+                        message={error}
+                        error
+                        onDismiss={() => setError(undefined)}
+                      />
                     )}
                     {notice && (
-                      <div className="notice" role="status">
-                        <span>{notice}</span>
-                        <button
-                          aria-label="Dismiss notification"
-                          onClick={() => setNotice(undefined)}
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
+                      <Toast
+                        message={notice}
+                        onDismiss={() => setNotice(undefined)}
+                      />
                     )}
                     {busy && (
                       <div className="working" role="status">
@@ -2469,6 +2516,22 @@ export default function App() {
                     sourceKey={`${previewUrl?.url}:${!!previewError}:${dependencies.previewReady}`}
                     duration={source.duration_ms ?? 0}
                     offset={videoOffset}
+                    hasVideo={source.streams.some(
+                      (s) => s.kind === "video" && !s.properties.attached_pic,
+                    )}
+                    frameRate={
+                      source.streams.find(
+                        (s) => s.kind === "video" && !s.properties.attached_pic,
+                      )?.properties.r_frame_rate
+                    }
+                    addChapter={addTimelineChapter}
+                    previousChapter={
+                      p.chapters.length ? () => seekChapter(-1) : undefined
+                    }
+                    nextChapter={
+                      p.chapters.length ? () => seekChapter(1) : undefined
+                    }
+                    chapterDisabled={!!busy}
                     sync={(time, reveal) => {
                       setPlayhead(time);
                       if (reveal)
@@ -2496,18 +2559,6 @@ export default function App() {
                       Retry preview
                     </button>
                   )}
-                  <button
-                    aria-label="Previous chapter"
-                    onClick={() => seekChapter(-1)}
-                  >
-                    Previous chapter
-                  </button>
-                  <button
-                    aria-label="Next chapter"
-                    onClick={() => seekChapter(1)}
-                  >
-                    Next chapter
-                  </button>
                 </div>
               </>,
               viewerTarget,
