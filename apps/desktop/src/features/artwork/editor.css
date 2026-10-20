@@ -44,6 +44,7 @@
   min-height: 24px;
   line-height: 12px;
 }
+.artwork-save-feedback,
 .artwork-apply-feedback {
   padding: 9px 12px;
   border: 1px solid var(--art-green);
@@ -159,6 +160,20 @@
   margin-bottom: 6px;
   color: var(--muted);
   background: var(--panel);
+}
+.artwork-editor-grid .artwork-preview-caption {
+  position: relative;
+  min-height: 28px;
+}
+.artwork-save-preview {
+  position: absolute;
+  left: 4px;
+  top: 2px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 3px;
 }
 .artwork-image-area {
   display: flex;

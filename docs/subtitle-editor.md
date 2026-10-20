@@ -1,6 +1,8 @@
-# SRT Editor (0.2.0-2 Developer Preview)
+# Subtitle Studio
 
-Open **Project menu > SRT subtitle editor**, or **Subtitles > Create / edit / translate SRT**. No video is required to create or edit a document.
+Open **Subtitle Studio** from the toolbar or Project menu. It occupies the main lower timeline workspace rather than the right inspector or a modal. Open **Search, import & preview** for the provider browser, local subtitle imports and source-video audition. Information icons immediately after section titles reveal guidance on hover or keyboard focus; errors, warnings, document data and operation progress remain visible. No video is required for editing.
+
+Switching back to the timeline preserves the draft and pauses the studio player. **Discard draft** explicitly restores the saved/loaded baseline or clears an unsaved new document; it never changes original files. Native application-close protection still covers unsaved subtitle work and active model jobs. Subtitle keyboard shortcuts stay scoped to the studio rather than triggering project actions.
 
 - Open UTF-8 SRT files, create cues, edit text and millisecond timing, capture video playhead boundaries, split at the text cursor, merge, sort, shift selected/all cues, and perform literal case-sensitive replacements.
 - The editor has its own 40-step undo/redo history. Ctrl/Cmd+S saves a new copy; Ctrl/Cmd+Z and Shift+Z undo/redo. Validation reports overlaps, empty text, long lines and reading speed.

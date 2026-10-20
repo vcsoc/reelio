@@ -242,9 +242,16 @@ test("project menu, toolbar tools, borderless title and interface zoom", async (
   page,
 }, testInfo) => {
   await page.goto("/");
+  await page
+    .getByRole("tab", { name: "Export & history", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "MP4", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("combobox", { name: "Output profile", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("tab", { name: "Timeline", exact: true }).click();
   const trigger = page.getByRole("button", {
     name: "Project menu",
     exact: true,
@@ -662,8 +669,33 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
                 packages: [],
               };
             if (cmd === "settings_get")
-              return { theme: "light", recents: [], backend: null };
+              return {
+                theme: "light",
+                recents: [],
+                backend: null,
+                image_format:
+                  localStorage.getItem("test-image-format") || "png",
+                default_folder:
+                  localStorage.getItem("test-default-folder") ||
+                  "/home/test/Videos",
+              };
+            if (cmd === "settings_choose_folder") return "/workspace/output";
             if (cmd === "settings_update") {
+              if (args?.key === "image_format") {
+                localStorage.setItem("test-image-format", args.value as string);
+                return null;
+              }
+              if (args?.key === "default_folder") {
+                if (args.value !== null && args.value !== "/workspace/output")
+                  throw new Error("Choose an existing absolute folder path");
+                localStorage.setItem(
+                  "test-default-folder",
+                  args.value === null
+                    ? "/home/test/Videos"
+                    : (args.value as string),
+                );
+                return null;
+              }
               localStorage.setItem(
                 "test-theme-preference",
                 JSON.stringify(args),
@@ -730,6 +762,24 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
                 asset: imageAsset,
                 artwork: { ...poster, source_label: "Cover.avif" },
               };
+            }
+            if (cmd === "artwork_save_copy") {
+              localStorage.setItem(
+                "test-saved-image",
+                JSON.stringify(args.artwork),
+              );
+              const mode = localStorage.getItem("test-image-save-mode");
+              if (mode === "cancel") return null;
+              if (mode === "error")
+                throw new Error(
+                  "Destination exists. Choose a new image filename.",
+                );
+              return (
+                "/workspace/cover-preview." +
+                (localStorage.getItem("test-image-format") === "jpeg"
+                  ? "jpg"
+                  : "png")
+              );
             }
             if (cmd === "artwork_edit") {
               const delay = Number(
@@ -1162,9 +1212,7 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
   await expect(
     page.getByRole("button", { name: "Choose destination & export" }),
   ).toBeEnabled();
-  await page
-    .getByRole("combobox", { name: "Output profile", exact: true })
-    .selectOption("mp4");
+  await page.getByRole("button", { name: "MP4", exact: true }).click();
   await page.getByRole("tab", { name: /^All tracks/ }).click();
   const audioDefault = page.getByRole("checkbox", {
     name: "Default Main audio",
@@ -1222,9 +1270,7 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
   await page.evaluate(() =>
     localStorage.setItem("test-export-action", "render_video"),
   );
-  await page
-    .getByRole("combobox", { name: "Output profile", exact: true })
-    .selectOption("matroska");
+  await page.getByRole("button", { name: "MKV", exact: true }).click();
   await expect(page.getByText("Render video", { exact: true })).toBeVisible();
   await expect(exportButton).toBeEnabled();
   await reviewExport(false, true);
@@ -1250,13 +1296,9 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
   ).toBe("2");
   await expect(page.locator(".approval, .warnings")).toHaveCount(0);
   await page.evaluate(() => localStorage.removeItem("test-export-action"));
-  await page
-    .getByRole("combobox", { name: "Output profile", exact: true })
-    .selectOption("mp4");
+  await page.getByRole("button", { name: "MP4", exact: true }).click();
   await expect(page.getByText("Render video", { exact: true })).toHaveCount(0);
-  await page
-    .getByRole("combobox", { name: "Output profile", exact: true })
-    .selectOption("matroska");
+  await page.getByRole("button", { name: "MKV", exact: true }).click();
   await expect(exportButton).toBeEnabled();
   await page.evaluate(() => localStorage.setItem("test-live-export", "1"));
   await reviewExport(true, false);
@@ -1321,6 +1363,42 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await dialog.getByLabel("Appearance").selectOption("dark");
+  await expect(
+    dialog.getByLabel("Default folder", { exact: true }),
+  ).toHaveValue("/home/test/Videos");
+  await dialog
+    .getByRole("button", { name: "Browse folder", exact: true })
+    .click();
+  await expect(
+    dialog.getByLabel("Default folder", { exact: true }),
+  ).toHaveValue("/workspace/output");
+  await dialog
+    .getByRole("button", { name: "Save default folder", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(
+    dialog.getByLabel("Default folder", { exact: true }),
+  ).toHaveValue("/workspace/output");
+  await dialog.getByLabel("Default folder", { exact: true }).fill("/missing");
+  await dialog
+    .getByRole("button", { name: "Save default folder", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "existing absolute folder",
+  );
+  await dialog
+    .getByRole("button", { name: "Reset to Videos", exact: true })
+    .click();
+  await expect(
+    dialog.getByLabel("Default folder", { exact: true }),
+  ).toHaveValue("/home/test/Videos");
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect(dialog.getByLabel("Default image format")).toHaveValue("png");
+  await dialog.getByLabel("Default image format").selectOption("jpeg");
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("test-image-format")))
+    .toBe("jpeg");
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
   await page.screenshot({
@@ -1573,6 +1651,10 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
       ),
     )
     .toBe("16:9");
+  await expect(
+    page.getByRole("tab", { name: "Timeline", exact: true }),
+  ).toHaveAttribute("data-state", "active");
+  await page.getByRole("tab", { name: "Poster & cover", exact: true }).click();
   const useCover = page.getByRole("button", {
     name: "Use cover for Fixture Movie",
     exact: true,
@@ -1659,8 +1741,40 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
       ),
     )
     .toBe(90);
+  const savePreview = page.getByRole("button", {
+    name: "Save preview image",
+    exact: true,
+  });
+  await expect(savePreview).toBeEnabled();
+  await page.evaluate(() =>
+    localStorage.setItem("test-image-save-mode", "cancel"),
+  );
+  await savePreview.click();
+  await expect(page.getByText(/Preview image saved:/)).toHaveCount(0);
+  await page.evaluate(() =>
+    localStorage.setItem("test-image-save-mode", "error"),
+  );
+  await savePreview.click();
+  await expect(page.getByRole("alert")).toContainText("Destination exists");
+  await expect(savePreview).toBeEnabled();
+  await page.evaluate(() => localStorage.removeItem("test-image-save-mode"));
+  await savePreview.click();
+  await expect(
+    page.getByText("Preview image saved: /workspace/cover-preview.jpg", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: "Poster & cover", exact: true }),
+  ).toHaveAttribute("data-state", "active");
   await page.getByRole("button", { name: "Apply cover to project" }).click();
+  await expect(
+    page.getByRole("tab", { name: "Timeline", exact: true }),
+  ).toHaveAttribute("data-state", "active");
+  await expect(page.locator(".artwork-workspace")).toBeHidden();
+  await page.getByRole("tab", { name: "Poster & cover", exact: true }).click();
   await expect(page.locator(".artwork-apply-feedback")).toBeVisible();
+  await page.locator(".artwork-apply-feedback").scrollIntoViewIfNeeded();
   await expect(page.locator(".artwork-apply-feedback")).toBeInViewport();
   {
     const studio = page.locator(".artwork-editor-grid"),
@@ -1902,7 +2016,41 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
     path: testInfo.outputPath("chapters-start-times.png"),
     fullPage: true,
   });
-  await page.getByRole("tab", { name: "Subtitles", exact: true }).click();
+  await page.getByRole("tab", { name: "Subtitle Studio", exact: true }).click();
+  const studio = page
+    .locator(".lower-workspace")
+    .getByRole("region", { name: "Subtitle Studio", exact: true });
+  await expect(studio).toBeVisible();
+  await expect(page.locator(".inspector .subtitle-tools")).toHaveCount(0);
+  await expect(
+    page.getByRole("dialog", { name: "Subtitle Studio", exact: true }),
+  ).toHaveCount(0);
+  await studio.getByRole("button", { name: "New SRT", exact: true }).click();
+  await studio
+    .getByRole("textbox", { name: "Subtitle cue text", exact: true })
+    .fill("Studio draft survives navigation");
+  await page.getByRole("tab", { name: "Timeline", exact: true }).click();
+  await expect(studio).toBeHidden();
+  await page.getByRole("tab", { name: "Subtitle Studio", exact: true }).click();
+  await expect(
+    studio.getByRole("textbox", { name: "Subtitle cue text", exact: true }),
+  ).toHaveValue("Studio draft survives navigation");
+  const modelHelp = studio.getByRole("button", {
+    name: "Local model translation information",
+    exact: true,
+  });
+  await modelHelp.focus();
+  await expect(studio.getByRole("tooltip")).toContainText("127.0.0.1:11434");
+  await modelHelp.press("Escape");
+  await expect(studio.getByRole("tooltip")).toHaveCount(0);
+  page.once("dialog", (dialog) => dialog.accept());
+  await studio
+    .getByRole("button", { name: "Discard draft", exact: true })
+    .click();
+  await expect(
+    studio.getByRole("button", { name: "Discard draft", exact: true }),
+  ).toBeDisabled();
+  await studio.getByText("Search, import & preview", { exact: true }).click();
   await page
     .getByLabel("Direct subtitle or ZIP URL")
     .fill("https://example.com/subtitles.zip");
@@ -2835,9 +2983,16 @@ test("workspace editing flow with a mocked Tauri IPC boundary", async ({
   await expect(
     page.getByRole("button", { name: "Undo", exact: true }),
   ).toBeDisabled();
+  await page
+    .getByRole("tab", { name: "Export & history", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "MP4", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("combobox", { name: "Output profile", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("tab", { name: "Timeline", exact: true }).click();
   await openProjectMenu(page);
   await expect(
     page.getByRole("menuitem", { name: "Save project", exact: true }),

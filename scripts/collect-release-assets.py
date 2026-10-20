@@ -8,7 +8,7 @@ import sys
 
 source, destination = map(Path, sys.argv[1:3])
 version = json.loads((Path(__file__).resolve().parent.parent / "apps/desktop/package.json").read_text())["version"]
-pattern = re.compile(r"(?:reelio-" + re.escape(version) + r"-[1-9][0-9]*-x86_64\.pkg\.tar\.zst|Reelio_" + re.escape(version) + r"_(?:amd64\.deb|(?:x64|aarch64)\.dmg|x64-setup\.exe))")
+pattern = re.compile(r"(?:reelio-" + re.escape(version) + r"-[1-9][0-9]*-x86_64\.pkg\.tar\.zst|Reelio_" + re.escape(version) + r"_(?:amd64\.(?:deb|AppImage)|(?:x64|aarch64)\.dmg|x64-setup\.exe))")
 destination.mkdir(parents=True, exist_ok=True)
 checksums = []
 for path in sorted(source.rglob("*")):

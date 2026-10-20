@@ -18,6 +18,21 @@ fn release(tag: &str, revision: u32) -> Release {
     }
 }
 #[test]
+fn appimage_assets_are_bound_to_the_release_version_and_architecture() {
+    let version = Version::parse("v0.2.0-3").unwrap();
+    assert_eq!(
+        Target::AppImageX64.asset_version("Reelio_0.2.0_amd64.AppImage", version),
+        Some(version)
+    );
+    for name in [
+        "Reelio_0.2.0_aarch64.AppImage",
+        "Reelio_0.1.0_amd64.AppImage",
+        "Reelio_0.2.0_amd64.deb",
+    ] {
+        assert!(Target::AppImageX64.asset_version(name, version).is_none());
+    }
+}
+#[test]
 fn versions_are_numeric_and_preserve_legacy_builds() {
     assert!(Version::parse("v0.10.0").unwrap() > Version::parse("0.9.99-99").unwrap());
     assert!(Version::parse("0.2.0-10").unwrap() > Version::parse("0.2.0-9").unwrap());

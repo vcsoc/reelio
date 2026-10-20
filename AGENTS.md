@@ -14,7 +14,7 @@ Read README.md and docs/implementation-status.md before changing behavior. Never
 - Retain Cargo.lock and package-lock.json. Upgrade the Tauri macro/runtime family together and build the desktop crate.
 - User preference: complete every requested deliverable successfully, including builds/releases and publishing when requested. Stay focused and complete requests as quickly as possible; aim for 15 seconds where feasible without skipping source safety or necessary verification, and never claim an unverified result.
 - Native Hyprland automation: invoke dispatcher constructors through `hyprctl dispatch 'hl.dsp.focus({window="address:..."})'`, not `eval` (which only constructs the dispatcher). Always verify the owned PID/title before input; normal targeted close uses `hl.dsp.window.close(...)` through dispatch too.
-- User preference: after a verified update, normally close Reelio and install the latest verified package without asking again. Respect save/active-export/repair protections; do not forcibly terminate protected work or package transactions. Report authentication blockers and verify the installed version and executable.
+- User preference: after a verified update, normally install the latest verified build without asking again. Use `python3 scripts/install-user.py` for password-free per-user updates; never use sudo/Polkit/pacman for routine Reelio app updates or weaken host authorization rules. The system Arch package may remain as the dependency-providing fallback. System dependency changes still need normal authorization. Respect save/active-export/repair protections; do not forcibly terminate protected work or package transactions. Verify the active user launcher, installed version and executable.
 
 Verification:
 `cargo fmt --all --check`

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { StudioInfo } from "./StudioInfo";
 import { listen } from "@tauri-apps/api/event";
 import { call, desktop } from "../../services/desktop";
 import {
@@ -61,7 +62,15 @@ export function SubtitleEditor({
   onAdd,
   sources,
   projectBusy,
+  embedded = false,
+  visible,
+  onClose,
+  children,
 }: {
+  embedded?: boolean;
+  visible?: boolean;
+  onClose?: () => void;
+  children?: ReactNode;
   videoUrl?: string;
   projectBusy?: boolean;
   onOpen: () => void;
@@ -213,7 +222,7 @@ export function SubtitleEditor({
   function show() {
     openRef.current();
     setOpened(true);
-    if (!dialog.current?.open) dialog.current?.showModal();
+    if (!embedded && !dialog.current?.open) dialog.current?.showModal();
   }
   useEffect(() => {
     const open = () => show();
@@ -317,6 +326,29 @@ export function SubtitleEditor({
     setReview(undefined);
     setError("");
   }
+  async function newDocument() {
+    if (
+      locked ||
+      (dirty && !window.confirm("Discard this draft and create new subtitles?"))
+    )
+      return;
+    setWork("New subtitles");
+    try {
+      await reset(
+        {
+          cues: [
+            { id: crypto.randomUUID(), start_ms: 0, end_ms: 2000, text: "" },
+          ],
+        },
+        "",
+        true,
+      );
+    } catch (e) {
+      fail(e);
+    } finally {
+      setWork("");
+    }
+  }
   async function load(path?: string) {
     if (
       dirty &&
@@ -359,7 +391,44 @@ export function SubtitleEditor({
       setWork("");
     }
   }
+  async function discard() {
+    if (
+      locked ||
+      !dirty ||
+      !window.confirm(
+        "Discard unsaved subtitle edits? Original SRT files and saved copies will not change.",
+      )
+    )
+      return;
+    setWork("Discarding draft");
+    try {
+      await enqueue(() => call("subtitle_editor_draft", { clear: true }));
+      const restored = baseline
+        ? (JSON.parse(baseline) as SrtDocument)
+        : empty();
+      setHistory({ past: [], doc: restored, future: [] });
+      setBaseline(documentKey(restored));
+      setForcedDraft(false);
+      setSelected(restored.cues[0]?.id || "");
+      setMarked(new Set());
+      setReview(undefined);
+      setError("");
+      setNotice(
+        "Unsaved subtitle draft discarded. Original files are unchanged.",
+      );
+    } catch (e) {
+      fail(e);
+    } finally {
+      setWork("");
+    }
+  }
   async function close() {
+    if (embedded) {
+      player.current?.pause();
+      setOpened(false);
+      onClose?.();
+      return;
+    }
     if (running || work) {
       setNotice(
         "Finish or cancel the running operation before closing the editor.",
@@ -445,21 +514,34 @@ export function SubtitleEditor({
       setWork("");
     }
   }
+  useEffect(() => {
+    if (embedded) setOpened(!!visible);
+    if (embedded && !visible) player.current?.pause();
+  }, [embedded, visible]);
+  const Container = embedded ? "section" : "dialog";
   const active = doc.cues
     .filter((c) => time >= c.start_ms && time < c.end_ms)
     .slice(0, 5);
   return (
-    <dialog
-      ref={dialog}
-      className="settings-dialog subtitle-editor"
-      aria-labelledby="subtitle-editor-title"
+    <Container
+      ref={embedded ? undefined : dialog}
+      className={`settings-dialog subtitle-editor ${embedded ? "subtitle-studio" : ""}`}
+      aria-label="Subtitle Studio"
       onKeyDown={(event) => {
         if (!(event.ctrlKey || event.metaKey)) return;
         const key = event.key.toLowerCase();
-        if (!["s", "z", "y"].includes(key)) return;
+        if (!["s", "z", "y", "n", "o"].includes(key)) return;
         event.preventDefault();
         event.stopPropagation();
         if (locked) return;
+        if (key === "n") {
+          void newDocument();
+          return;
+        }
+        if (key === "o") {
+          void load();
+          return;
+        }
         if (key === "s") {
           void save();
           return;
@@ -494,7 +576,13 @@ export function SubtitleEditor({
     >
       <header className="subtitle-editor-heading">
         <div>
-          <h2 id="subtitle-editor-title">SRT subtitle editor</h2>
+          <h2 id="subtitle-editor-title">
+            Subtitle Studio{" "}
+            <StudioInfo
+              title="Subtitle Studio"
+              text="Create, edit and translate UTF-8 SubRip subtitles. Originals are never overwritten; save a new copy, then explicitly add it to your project. Draft recovery is stored locally. Maximum 4 MiB, 10,000 cues and 16 KiB per cue. Model translation is optional and requires a trusted local Ollama service."
+            />
+          </h2>
           <small>
             {doc.cues.length} cues ·{" "}
             {dirty ? "Unsaved draft" : "Saved / unchanged"}
@@ -504,39 +592,25 @@ export function SubtitleEditor({
         <button
           type="button"
           onClick={() => void close()}
-          disabled={!!work || running}
+          disabled={!embedded && (!!work || running)}
         >
-          Close editor
+          {embedded ? "Back to timeline" : "Close editor"}
         </button>
       </header>
+      {children && (
+        <details className="studio-import">
+          <summary>
+            <span>Search, import & preview</span>{" "}
+            <StudioInfo
+              title="Search, import and preview"
+              text="Find or choose subtitle files, add them to the project and audition them over the source video. Track language and output settings remain available in All tracks."
+            />
+          </summary>
+          {children}
+        </details>
+      )}
       <div className="subtitle-editor-toolbar">
-        <button
-          disabled={locked}
-          onClick={() => {
-            if (
-              dirty &&
-              !confirm("Discard this draft and create new subtitles?")
-            )
-              return;
-            setWork("New subtitles");
-            void reset(
-              {
-                cues: [
-                  {
-                    id: crypto.randomUUID(),
-                    start_ms: 0,
-                    end_ms: 2000,
-                    text: "",
-                  },
-                ],
-              },
-              "",
-              true,
-            )
-              .catch(fail)
-              .finally(() => setWork(""));
-          }}
-        >
+        <button disabled={locked} onClick={() => void newDocument()}>
           New SRT
         </button>
         <button disabled={locked} onClick={() => void load()}>
@@ -549,6 +623,11 @@ export function SubtitleEditor({
         >
           Save SRT copy
         </button>
+        {embedded && (
+          <button disabled={locked || !dirty} onClick={() => void discard()}>
+            Discard draft
+          </button>
+        )}
         <button
           disabled={locked || !history.past.length}
           onClick={() => {
@@ -739,6 +818,13 @@ export function SubtitleEditor({
           </div>
         </section>
         <section className="subtitle-cue-editor" aria-label="Cue editing">
+          <h3>
+            Source preview{" "}
+            <StudioInfo
+              title="Source preview"
+              text="Open or select a project video to preview these cues. SRT editing does not require video or a model. Preview uses source times rather than rendered project trims; subtitle styling may differ."
+            />
+          </h3>
           <div className="subtitle-editor-player">
             {videoUrl ? (
               <>
@@ -761,10 +847,7 @@ export function SubtitleEditor({
                 </div>
               </>
             ) : (
-              <p className="muted">
-                Open/select a video in the project to preview these cues. SRT
-                editing does not require video or a model.
-              </p>
+              <p className="muted">No video selected</p>
             )}
           </div>
           <div className="subtitle-editor-toolbar">
@@ -940,10 +1023,22 @@ export function SubtitleEditor({
               </div>
             </>
           ) : (
-            <p>Select a cue or add one to begin.</p>
+            <h3>
+              Cue editor{" "}
+              <StudioInfo
+                title="Cue editor"
+                text="Select a cue from the list or add one to begin. Edit times directly, capture the video playhead, split at the text cursor or merge adjacent cues."
+              />
+            </h3>
           )}
           <details>
-            <summary>Timing, find & replace</summary>
+            <summary>
+              <span>Timing, find & replace</span>{" "}
+              <StudioInfo
+                title="Timing, find and replace"
+                text="Shift checked or current cues, or the entire document, by a signed millisecond offset. Find/replace is literal and case-sensitive. Changes are undoable."
+              />
+            </summary>
             <div className="subtitle-editor-toolbar">
               <label>
                 Apply to
@@ -1000,7 +1095,13 @@ export function SubtitleEditor({
             </div>
           </details>
           <details>
-            <summary>Validation & reading speed ({issues.length})</summary>
+            <summary>
+              Validation & reading speed ({issues.length}){" "}
+              <StudioInfo
+                title="Validation and reading speed"
+                text="Overlaps, long lines and reading speed are review warnings. Invalid intervals and empty or blank-line cues block saving. Incomplete drafts remain recoverable."
+              />
+            </summary>
             {issues.length ? (
               <ul>
                 {issues.slice(0, 40).map((issue, i) => (
@@ -1011,10 +1112,6 @@ export function SubtitleEditor({
               <p>No timing/text/readability issues found.</p>
             )}
             {issues.length > 40 && <p>Showing the first 40 issues.</p>}
-            <small>
-              Overlaps, long lines and reading speed are review warnings.
-              Invalid intervals and empty/blank-line cues block saving.
-            </small>
           </details>
         </section>
       </div>
@@ -1022,14 +1119,13 @@ export function SubtitleEditor({
         className="subtitle-translation"
         aria-label="Local subtitle translation"
       >
-        <h3>Local model translation</h3>
-        <p className="muted">
-          Optional Ollama model plugin. Reelio contacts only 127.0.0.1:11434;
-          use a trusted Ollama service configured for local inference, not a
-          cloud proxy. Model downloads need internet and several GB of disk/RAM.
-          Cue timings never go to the model; returned cue identities are
-          checked. Translation requires human review.
-        </p>
+        <h3>
+          Local model translation{" "}
+          <StudioInfo
+            title="Local model translation"
+            text="Optional Ollama model plugin. Reelio contacts only 127.0.0.1:11434; use a trusted service configured for local inference, not a cloud proxy. Downloads need internet and several GB of disk/RAM. Cue timings never go to the model; returned identities are checked. Review translations before applying. Original files remain unchanged."
+          />
+        </h3>
         <div className="subtitle-editor-toolbar">
           <label>
             Model plugin
@@ -1203,10 +1299,6 @@ export function SubtitleEditor({
           </section>
         )}
       </section>
-      <p className="muted">
-        UTF-8 SubRip · Maximum 4 MiB / 10,000 cues · Original files are never
-        overwritten · Draft recovery is stored locally.
-      </p>
-    </dialog>
+    </Container>
   );
 }

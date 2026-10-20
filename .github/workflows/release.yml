@@ -11,8 +11,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
-            bundles: deb
+          - os: ubuntu-22.04
+            bundles: deb,appimage
           - os: windows-latest
             bundles: nsis
           - os: macos-latest
@@ -85,7 +85,22 @@ jobs:
         run: |
           python scripts/check-release-version.py "$RELEASE_TAG"
           python scripts/collect-release-assets.py target/downloaded-packages target/github-release
+      - name: Preserve an already published release
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" >/dev/null 2>release-error.log; then
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+          elif grep -q 'HTTP 404' release-error.log; then
+            echo 'publish=true' >> "$GITHUB_OUTPUT"
+          else
+            cat release-error.log >&2
+            exit 1
+          fi
       - uses: softprops/action-gh-release@v2
+        if: steps.existing.outputs.publish == 'true'
         with:
           files: target/github-release/*
           fail_on_unmatched_files: true

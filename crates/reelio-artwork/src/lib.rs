@@ -65,8 +65,14 @@ fn dimensions(width: u32, height: u32) -> Result<(), String> {
     }
 }
 fn decode(bytes: &[u8]) -> Result<DynamicImage, String> {
-    if bytes.is_empty() || bytes.len() > MAX_DOWNLOAD {
-        return Err("Image must be between 1 byte and 8 MiB".into());
+    decode_bounded(bytes, MAX_DOWNLOAD)
+}
+fn decode_bounded(bytes: &[u8], max_bytes: usize) -> Result<DynamicImage, String> {
+    if bytes.is_empty() || bytes.len() > max_bytes {
+        return Err(format!(
+            "Image must be between 1 byte and {} MiB",
+            max_bytes / (1024 * 1024)
+        ));
     }
     let format = image::guess_format(bytes).map_err(|_| "Select a JPEG, PNG, or WebP image")?;
     if !matches!(
@@ -145,6 +151,87 @@ pub fn jpeg_bytes(art: &Artwork) -> Result<Vec<u8>, String> {
         return Err("Artwork dimensions do not match its image payload".into());
     }
     Ok(bytes)
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ImageFileFormat {
+    Png,
+    Jpeg,
+    Webp,
+}
+impl ImageFileFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Png => "png",
+            Self::Jpeg => "jpg",
+            Self::Webp => "webp",
+        }
+    }
+    fn codec(self) -> image::ImageFormat {
+        match self {
+            Self::Png => image::ImageFormat::Png,
+            Self::Jpeg => image::ImageFormat::Jpeg,
+            Self::Webp => image::ImageFormat::WebP,
+        }
+    }
+}
+pub fn save_copy(
+    art: &Artwork,
+    path: &std::path::Path,
+    format: ImageFileFormat,
+) -> Result<(), String> {
+    use std::io::Write;
+    if !path.is_absolute() {
+        return Err("Choose an absolute image destination".into());
+    }
+    let extension = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if extension != format.extension()
+        && !(matches!(format, ImageFileFormat::Jpeg) && extension == "jpeg")
+    {
+        return Err(format!(
+            "Choose a .{} filename for the selected image format",
+            format.extension()
+        ));
+    }
+    if path.exists() {
+        return Err("Destination exists. Choose a new image filename.".into());
+    }
+    let source = jpeg_bytes(art)?;
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(path.parent().ok_or("Missing destination folder")?)
+            .map_err(|e| e.to_string())?;
+    if matches!(format, ImageFileFormat::Jpeg) {
+        temporary.write_all(&source).map_err(|e| e.to_string())?;
+    } else {
+        decode(&source)?
+            .write_to(temporary.as_file_mut(), format.codec())
+            .map_err(|e| e.to_string())?;
+    }
+    temporary.as_file().sync_all().map_err(|e| e.to_string())?;
+    const MAX_SAVED_BYTES: usize = 65 * 1024 * 1024;
+    if temporary
+        .as_file()
+        .metadata()
+        .map_err(|e| e.to_string())?
+        .len()
+        > MAX_SAVED_BYTES as u64
+    {
+        return Err("Encoded preview image exceeds the safe size limit".into());
+    }
+    let bytes = std::fs::read(temporary.path()).map_err(|e| e.to_string())?;
+    if image::guess_format(&bytes).map_err(|e| e.to_string())? != format.codec()
+        || decode_bounded(&bytes, MAX_SAVED_BYTES)?.dimensions() != (art.width, art.height)
+    {
+        return Err("Saved image verification failed".into());
+    }
+    temporary
+        .persist_noclobber(path)
+        .map_err(|e| format!("Image was not published; existing files are protected: {e}"))?;
+    Ok(())
 }
 pub fn crop_to_ratio(art: &Artwork, width: u32, height: u32) -> Result<Artwork, String> {
     if width == 0 || height == 0 || width > 100 || height > 100 {
@@ -253,6 +340,71 @@ mod tests {
     fn sample() -> Artwork {
         let im = DynamicImage::ImageRgb8(RgbImage::from_pixel(80, 120, Rgb([200, 90, 30])));
         encode(im, "fixture".into()).unwrap()
+    }
+    #[test]
+    fn saved_preview_formats_round_trip_and_never_overwrite() {
+        let root = tempfile::tempdir().unwrap();
+        let original = sample();
+        let source = original.jpeg.clone();
+        let art = edit(
+            &original,
+            &ImageEdits {
+                resize: Some(Resize {
+                    width: 40,
+                    height: 60,
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        for format in [
+            ImageFileFormat::Png,
+            ImageFileFormat::Jpeg,
+            ImageFileFormat::Webp,
+        ] {
+            let path = root.path().join(format!("preview.{}", format.extension()));
+            save_copy(&art, &path, format).unwrap();
+            let before = std::fs::read(&path).unwrap();
+            assert_eq!(image::guess_format(&before).unwrap(), format.codec());
+            assert_eq!(decode(&before).unwrap().dimensions(), (40, 60));
+            assert_eq!(
+                decode(&before).unwrap().to_rgb8(),
+                decode(&jpeg_bytes(&art).unwrap()).unwrap().to_rgb8()
+            );
+            assert!(save_copy(&original, &path, format).is_err());
+            assert_eq!(std::fs::read(path).unwrap(), before);
+        }
+        assert_eq!(source, original.jpeg);
+        assert!(save_copy(&art, &root.path().join("wrong.jpg"), ImageFileFormat::Png).is_err());
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 3);
+    }
+    #[test]
+    fn concurrent_image_saves_publish_only_one_file() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("preview.png");
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let handles = (0..2)
+            .map(|_| {
+                let path = path.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    save_copy(&sample(), &path, ImageFileFormat::Png).is_ok()
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            handles
+                .into_iter()
+                .map(|h| usize::from(h.join().unwrap()))
+                .sum::<usize>(),
+            1
+        );
+        assert_eq!(
+            decode(&std::fs::read(path).unwrap()).unwrap().dimensions(),
+            (80, 120)
+        );
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
     }
     #[test]
     fn ratio_crop_is_exact_without_stretching_and_keeps_source_immutable() {

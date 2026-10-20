@@ -25,6 +25,7 @@ pub async fn subtitle_editor_open(
                 .dialog()
                 .file()
                 .set_title("Open SRT for editing (original stays unchanged)")
+                .set_directory(super::preferences::default_folder(&app, &state)?)
                 .add_filter("SubRip subtitles", &["srt"])
                 .blocking_pick_file()
             else {
@@ -60,6 +61,7 @@ pub async fn subtitle_editor_save(
             .dialog()
             .file()
             .set_title("Save a new SRT copy; existing files are protected")
+            .set_directory(super::preferences::default_folder(&app, &state)?)
             .set_file_name("subtitles-edited.srt")
             .add_filter("SubRip subtitles", &["srt"])
             .blocking_save_file()

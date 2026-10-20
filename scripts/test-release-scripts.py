@@ -18,6 +18,21 @@ class ReleaseTests(unittest.TestCase):
         result = subprocess.run([sys.executable, ROOT / "scripts/check-release-version.py", "v999.0.0"], capture_output=True)
         self.assertNotEqual(result.returncode, 0)
 
+    def test_appimage_is_collected_and_wrong_version_is_ignored(self):
+        import json
+        version = json.loads((ROOT / "apps/desktop/package.json").read_text())["version"]
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            source, destination = base / "source", base / "release"
+            source.mkdir()
+            filename = f"Reelio_{version}_amd64.AppImage"
+            (source / filename).write_bytes(b"appimage")
+            (source / "Reelio_999.0.0_amd64.AppImage").write_bytes(b"ignore")
+            result = subprocess.run([sys.executable, ROOT / "scripts/collect-release-assets.py", source, destination], capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((destination / filename).read_bytes(), b"appimage")
+            self.assertEqual(len(list(destination.iterdir())), 2)
+
     def test_package_manifest_and_no_clobber(self):
         import json
         version = json.loads((ROOT / "apps/desktop/package.json").read_text())["version"]

@@ -142,7 +142,8 @@
   align-items: stretch;
 }
 @media (min-width: 1101px) {
-  #root .timeline-layout[data-section="artwork"] {
+  #root .timeline-layout[data-section="artwork"],
+  #root .timeline-layout[data-section="subtitles"] {
     grid-template-rows: var(--viewer-height, minmax(220px, 30vh)) minmax(
         260px,
         1fr

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { StudioInfo } from "../subtitles/StudioInfo";
 import { call } from "../../services/desktop";
 import type { PendingResource, SearchKind } from "../../types";
 export type Run = <T>(
@@ -30,6 +31,12 @@ export function ResourceSearch({
           : kind === "artwork"
             ? "Find a poster or cover"
             : "Find subtitles"}
+        {kind === "subtitles" && (
+          <StudioInfo
+            title="Find subtitles"
+            text="Search sends only the movie query to Bing, not your video. Results open in an isolated Reelio browser without file or editing access and focus on OpenSubtitles. Accounts and provider restrictions may apply. Choose Download in the browser and confirm import here."
+          />
+        )}
       </h3>
       {!downloadOnly && (
         <>
@@ -55,15 +62,15 @@ export function ResourceSearch({
               Search in Reelio browser
             </button>
           </form>
-          <p className="muted">
-            Search sends only this query to Bing, not your video. Results open
-            in an isolated Reelio browser window without file or editing access.{" "}
-            {kind === "subtitles"
-              ? "Subtitle results focus on OpenSubtitles; accounts and provider restrictions may apply."
-              : "Check image usage rights before downloading a cover."}{" "}
-            Choose Download / Save image in the browser, then confirm the import
-            here.
-          </p>
+          {kind !== "subtitles" && (
+            <p className="muted">
+              Search sends only this query to Bing, not your video. Results open
+              in an isolated Reelio browser window without file or editing
+              access. Check image usage rights before downloading a cover.{" "}
+              Choose Download / Save image in the browser, then confirm the
+              import here.
+            </p>
+          )}
         </>
       )}
       <form

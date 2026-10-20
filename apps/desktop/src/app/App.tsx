@@ -82,7 +82,6 @@ import type {
   ResourceResult,
   SubtitleFile,
   Backend,
-  Container,
   Job,
   Plan,
   Project,
@@ -99,6 +98,7 @@ import {
   type TestedSubtitle,
 } from "../features/subtitles/SubtitleTools";
 import { SubtitleEditor } from "../features/subtitles/SubtitleEditor";
+import { StudioInfo } from "../features/subtitles/StudioInfo";
 import { inspectVtt, bindSubtitlePreview } from "../features/subtitles/preview";
 import "./styles.css";
 import "../features/resources/styles.css";
@@ -107,7 +107,7 @@ const sections = [
   { id: "timeline", label: "Timeline", icon: Layers3 },
   { id: "media", label: "Media information", icon: FileVideo2 },
   { id: "tracks", label: "All tracks", icon: Layers3 },
-  { id: "subtitles", label: "Subtitles", icon: Subtitles },
+  { id: "subtitles", label: "Subtitle Studio", icon: Subtitles },
   { id: "audio", label: "Audio", icon: AudioLines },
   { id: "metadata", label: "Metadata", icon: ListOrdered },
   { id: "artwork", label: "Poster & cover", icon: ImageIcon },
@@ -157,7 +157,11 @@ export default function App() {
   const setTab = React.useCallback(
     (section: string) => {
       setActiveTab(section);
-      if (section !== "timeline" && section !== "artwork")
+      if (
+        section !== "timeline" &&
+        section !== "artwork" &&
+        section !== "subtitles"
+      )
         setLayout((current) =>
           current.rightCollapsed
             ? { ...current, rightCollapsed: false }
@@ -168,6 +172,7 @@ export default function App() {
   );
   const priorTab = useRef(tab);
   useEffect(() => {
+    if (tab === "subtitles") video.current?.pause();
     if (priorTab.current === tab) return;
     priorTab.current = tab;
     const frame = requestAnimationFrame(() =>
@@ -177,7 +182,9 @@ export default function App() {
             ? ".timeline-viewer"
             : tab === "artwork"
               ? ".artwork-workspace"
-              : ".workspace",
+              : tab === "subtitles"
+                ? ".subtitle-studio-dock"
+                : ".workspace",
         )
         ?.scrollIntoView({ block: "start" }),
     );
@@ -215,6 +222,16 @@ export default function App() {
   const [recent, setRecent] = useState<{ path: string; kind: string }[]>([]);
   const [ffmpeg, setFfmpeg] = useState("");
   const [ffprobe, setFfprobe] = useState("");
+  const [defaultFolder, setDefaultFolder] = useState("");
+  const [savedFolder, setSavedFolder] = useState("");
+  const [imageFormat, setImageFormat] = useState("png");
+  const [folderError, setFolderError] = useState("");
+  useEffect(() => {
+    if (settings) {
+      setDefaultFolder(savedFolder);
+      setFolderError("");
+    }
+  }, [settings, savedFolder]);
   const settingsDialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (settings && !settingsDialog.current?.open)
@@ -637,12 +654,17 @@ export default function App() {
       theme: string;
       recents: typeof recent;
       backend: { ffmpeg?: string; ffprobe?: string } | null;
+      default_folder?: string;
+      image_format?: string;
     }>("settings_get")
       .then((s) => {
         setTheme(s.theme);
         setRecent(s.recents);
         setFfmpeg(s.backend?.ffmpeg || "");
         setFfprobe(s.backend?.ffprobe || "");
+        setSavedFolder(s.default_folder || "");
+        setImageFormat(s.image_format || "png");
+        setDefaultFolder(s.default_folder || "");
       })
       .catch((e) => setError(String(e.message)));
     void refreshJobs();
@@ -888,6 +910,7 @@ export default function App() {
   ]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.closest(".subtitle-studio")) return;
       const editing = (e.target as HTMLElement)?.matches(
         "input,textarea,select,[contenteditable]",
       );
@@ -1239,7 +1262,53 @@ export default function App() {
         />
         <section className="lower-workspace" aria-label="Lower workspace">
           <WorkspaceDivider height={viewerHeight} resize={setViewerHeight} />
-          <div className="timeline-dock" hidden={tab === "artwork"}>
+          <Tabs.Content
+            value="subtitles"
+            forceMount
+            className="subtitle-studio-dock"
+            hidden={tab !== "subtitles"}
+          >
+            {" "}
+            <SubtitleEditor
+              embedded
+              visible={tab === "subtitles"}
+              onClose={() => setTab("timeline")}
+              videoUrl={
+                !previewError && previewUrl?.path === source?.path
+                  ? previewUrl?.url
+                  : undefined
+              }
+              onOpen={() => {
+                video.current?.pause();
+                setTab("subtitles");
+              }}
+              onAdd={(paths) => addSubtitles(paths, true)}
+              projectBusy={!!busy}
+              sources={p.assets
+                .filter((a) => /\.srt$/i.test(a.path))
+                .map((a) => ({ path: a.path, label: basename(a.path) }))}
+            >
+              <SubtitleTools
+                project={p}
+                previewSourcePath={source?.path ?? ""}
+                busy={!!busy}
+                run={run}
+                onQueued={queueResource}
+                files={subtitleFiles}
+                onAdd={addSubtitles}
+                onTest={(id) => void testSubtitle(id)}
+                tested={validSubtitleTest}
+                onClear={() => setTestedSubtitle(undefined)}
+                onSeek={(ms) => {
+                  if (video.current) video.current.currentTime = ms / 1000;
+                }}
+              />
+            </SubtitleEditor>
+          </Tabs.Content>
+          <div
+            className="timeline-dock"
+            hidden={tab === "artwork" || tab === "subtitles"}
+          >
             <Timeline
               key={p.id}
               project={p}
@@ -1307,7 +1376,12 @@ export default function App() {
               }}
             />
           </div>
-          <Tabs.Content value="artwork" className="artwork-workspace">
+          <Tabs.Content
+            value="artwork"
+            forceMount
+            hidden={tab !== "artwork"}
+            className="artwork-workspace"
+          >
             <ArtworkPanel
               key={p.id}
               project={p}
@@ -1321,6 +1395,7 @@ export default function App() {
                   d.artwork = artwork;
                 });
                 setIncomingArtwork(undefined);
+                if (artwork) setTab("timeline");
                 setError(undefined);
                 setNotice(
                   artwork
@@ -1358,7 +1433,7 @@ export default function App() {
           <section
             className="workspace"
             aria-label="Project tools"
-            hidden={tab === "artwork"}
+            hidden={tab === "artwork" || tab === "subtitles"}
           >
             <div className="breadcrumb">
               Workspace
@@ -1428,7 +1503,7 @@ export default function App() {
                 )}
             </div>
             {!source ? (
-              <section className="empty-state">
+              <section className="empty-state" hidden={tab === "export"}>
                 <div className="empty-illustration">
                   <Film size={52} strokeWidth={1} />
                   <span>
@@ -1478,7 +1553,7 @@ export default function App() {
               </section>
             ) : (
               <>
-                {["tracks", "audio", "subtitles"].map((section) => (
+                {["tracks", "audio"].map((section) => (
                   <Tabs.Content value={section} key={section}>
                     <div className="section-heading">
                       <div>
@@ -1503,24 +1578,7 @@ export default function App() {
                         Add tracks
                       </button>
                     </div>
-                    {section === "subtitles" && (
-                      <SubtitleTools
-                        project={p}
-                        previewSourcePath={source?.path ?? ""}
-                        busy={!!busy}
-                        run={run}
-                        onQueued={queueResource}
-                        files={subtitleFiles}
-                        onAdd={addSubtitles}
-                        onTest={(id) => void testSubtitle(id)}
-                        tested={validSubtitleTest}
-                        onClear={() => setTestedSubtitle(undefined)}
-                        onSeek={(ms) => {
-                          if (video.current)
-                            video.current.currentTime = ms / 1000;
-                        }}
-                      />
-                    )}
+
                     <div className="table-scroll">
                       <table className="track-table">
                         <thead>
@@ -1690,14 +1748,6 @@ export default function App() {
                         </p>
                       </div>
                     </div>
-                    {section === "subtitles" && (
-                      <p className="inset-note">
-                        Text and image subtitle codecs are probed, not inferred
-                        from filenames. Text conversion may lose styling.
-                        Image-to-text OCR is unavailable. Text subtitle lanes
-                        can be positioned on the timeline and tested above.
-                      </p>
-                    )}
                     {current && (
                       <section className="editor-card">
                         <div className="section-heading">
@@ -2023,250 +2073,320 @@ export default function App() {
                     <CircleHelp size={15} />
                   </span>
                 </Tabs.Content>
-                <Tabs.Content value="export">
-                  <div className="section-heading">
-                    <div>
-                      <h2>Ready for a new container</h2>
-                      <p>Review the plan. Keep your originals.</p>
+              </>
+            )}
+            <Tabs.Content value="export">
+              <div className="section-heading">
+                <div>
+                  <h2>Ready for a new container</h2>
+                  <p>Review the plan. Keep your originals.</p>
+                </div>
+                <button
+                  className="secondary"
+                  onClick={() => void validateExport()}
+                  disabled={!!busy}
+                >
+                  Validate sources
+                </button>
+              </div>
+              <section className="editor-card">
+                {current && (
+                  <section
+                    className="inspector-section selected-lane-inspector"
+                    aria-label="Selected lane inspector"
+                  >
+                    <div className="inspector-title">
+                      SELECTED {currentStream?.kind.toUpperCase()} LANE
                     </div>
-                    <button
-                      className="secondary"
-                      onClick={() => void validateExport()}
-                      disabled={!!busy}
-                    >
-                      Validate sources
-                    </button>
-                  </div>
-                  <section className="editor-card">
                     <label>
-                      Output profile
-                      <select
-                        value={p.container}
+                      Title
+                      <input
+                        aria-label="Selected lane title"
+                        value={current.title}
                         onChange={(e) =>
-                          edit((d) => {
-                            d.container = e.target.value as Container;
+                          patchTrack(current.id, { title: e.target.value })
+                        }
+                      />
+                    </label>
+                    {(currentStream?.kind === "audio" ||
+                      currentStream?.kind === "subtitle") && (
+                      <label>
+                        Language
+                        <input
+                          aria-label="Selected lane language"
+                          list="languages"
+                          maxLength={3}
+                          value={current.language}
+                          onChange={(e) =>
+                            patchTrack(current.id, {
+                              language: e.target.value.toLowerCase(),
+                            })
+                          }
+                        />
+                      </label>
+                    )}
+                    {currentStream?.kind === "audio" && (
+                      <label>
+                        Output role
+                        <select
+                          aria-label="Selected lane output role"
+                          value={current.audio_role ?? "separate"}
+                          onChange={(e) =>
+                            patchTrack(current.id, {
+                              audio_role: e.target.value as "mix" | "separate",
+                            })
+                          }
+                        >
+                          <option value="mix">Mix into main audio</option>
+                          <option value="separate">
+                            Separate language track
+                          </option>
+                        </select>
+                      </label>
+                    )}
+                    <small>
+                      Position: {current.offset_ms} ms. Drag the clip or edit
+                      its timeline offset. Drag either clip edge to trim; extend
+                      an edge to restore source material.
+                    </small>
+                    {((current.trim_start_ms ?? 0) > 0 ||
+                      current.trim_end_ms != null) && (
+                      <button
+                        className="secondary"
+                        onClick={() =>
+                          patchTrack(current.id, {
+                            trim_start_ms: 0,
+                            trim_end_ms: null,
                           })
                         }
                       >
-                        <option value="matroska">
-                          MKV - Flexible track preservation
-                        </option>
-                        <option value="mp4">MP4 - General compatibility</option>
-                        <option value="m4v">
-                          M4V - Apple-oriented compatibility
-                        </option>
-                      </select>
-                    </label>
-                    <p className="inset-note">
-                      Profiles describe a compatibility target, not universal
-                      playback support. Existing destinations are never
-                      overwritten.
-                    </p>
-                    <div className="export-stats">
-                      <div>
-                        <strong>{enabled}</strong>
-                        <span>selected tracks</span>
-                      </div>
-                      <div>
-                        <strong>
-                          {plan?.tracks.filter((t) =>
-                            ["copy", "bitstream_filter"].includes(
-                              t.compatibility.action,
-                            ),
-                          ).length || 0}
-                        </strong>
-                        <span>without re-encoding</span>
-                      </div>
-                      <div>
-                        <strong>{bytes(plan?.estimated_bytes || 0)}</strong>
-                        <span>source size, not output estimate</span>
-                      </div>
-                    </div>
-                    {plan?.tracks
-                      .filter((track) =>
-                        p.tracks.some(
-                          (current) => current.id === track.track_id,
-                        ),
-                      )
-                      .map((t) => (
-                        <div className="plan-track" key={t.track_id}>
-                          <span>
-                            #{t.output_index + 1}{" "}
-                            {p.tracks.find((x) => x.id === t.track_id)?.title ||
-                              sourceStream(
-                                p,
-                                p.tracks.find((x) => x.id === t.track_id),
-                              )?.codec}
-                          </span>
-                          <span
-                            className={`compatibility ${t.compatibility.action}`}
-                          >
-                            {actions[t.compatibility.action]}
-                          </span>
-                        </div>
-                      ))}
+                        Reset clip trims
+                      </button>
+                    )}
                   </section>
-                  {plan?.errors.map((e, i) => (
-                    <div className="validation-error" key={i}>
-                      <X size={15} />
-                      {e}
+                )}
+                <div className="inspector-section">
+                  <div className="inspector-title">OUTPUT CONTAINER</div>
+                  <div className="container-options">
+                    {(["matroska", "mp4", "m4v"] as const).map((c) => (
+                      <button
+                        key={c}
+                        aria-pressed={p.container === c}
+                        onClick={() =>
+                          edit((d) => {
+                            d.container = c;
+                          })
+                        }
+                      >
+                        {c === "matroska" ? "MKV" : c.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                  <p>
+                    {p.container === "matroska"
+                      ? "Flexible stream preservation."
+                      : "Broad compatibility. Codec restrictions apply."}
+                  </p>
+                </div>
+                <div className="export-stats">
+                  <div>
+                    <strong>{enabled}</strong>
+                    <span>selected tracks</span>
+                  </div>
+                  <div>
+                    <strong>
+                      {plan?.tracks.filter((t) =>
+                        ["copy", "bitstream_filter"].includes(
+                          t.compatibility.action,
+                        ),
+                      ).length || 0}
+                    </strong>
+                    <span>without re-encoding</span>
+                  </div>
+                  <div>
+                    <strong>{bytes(plan?.estimated_bytes || 0)}</strong>
+                    <span>source size, not output estimate</span>
+                  </div>
+                </div>
+                {plan?.tracks
+                  .filter((track) =>
+                    p.tracks.some((current) => current.id === track.track_id),
+                  )
+                  .map((t) => (
+                    <div className="plan-track" key={t.track_id}>
+                      <span>
+                        #{t.output_index + 1}{" "}
+                        {p.tracks.find((x) => x.id === t.track_id)?.title ||
+                          sourceStream(
+                            p,
+                            p.tracks.find((x) => x.id === t.track_id),
+                          )?.codec}
+                      </span>
+                      <span
+                        className={`compatibility ${t.compatibility.action}`}
+                      >
+                        {actions[t.compatibility.action]}
+                      </span>
                     </div>
                   ))}
-                  <button
-                    className="primary export-button"
-                    disabled={
-                      !!busy || !!active || !plan || !!plan.errors.length
-                    }
-                    onClick={() => {
-                      if (!plan) return;
-                      const conversions = plan.tracks.filter((track) =>
-                        [
-                          "convert_subtitle",
-                          "render_audio",
-                          "render_video",
-                        ].includes(track.compatibility.action),
+              </section>
+              {plan?.errors.map((e, i) => (
+                <div className="validation-error" key={i}>
+                  <X size={15} />
+                  {e}
+                </div>
+              ))}
+              <button
+                className="primary export-button"
+                disabled={!!busy || !!active || !plan || !!plan.errors.length}
+                onClick={() => {
+                  if (!plan) return;
+                  const conversions = plan.tracks.filter((track) =>
+                    [
+                      "convert_subtitle",
+                      "render_audio",
+                      "render_video",
+                    ].includes(track.compatibility.action),
+                  );
+                  const approveConversion = conversions.length > 0;
+                  const review = [
+                    ...plan.warnings,
+                    ...conversions.map(
+                      (track) =>
+                        `Output track #${track.output_index + 1}: ${actions[track.compatibility.action]} - ${track.compatibility.reason}`,
+                    ),
+                    ...(approveConversion
+                      ? [
+                          "Continuing authorizes the listed subtitle conversions (including possible styling loss) and timeline audio/video rendering.",
+                        ]
+                      : []),
+                  ];
+                  if (
+                    review.length &&
+                    !confirm(
+                      `Export review\n\n${review.join("\n\n")}\n\nContinue with export?`,
+                    )
+                  )
+                    return;
+                  void run("Starting export", async () => {
+                    const id = await call<string | null>("export_start", {
+                      project: p,
+                      approveConversion,
+                    });
+                    if (id) {
+                      notifyingExport.current = id;
+                      setNotice(
+                        "Export started. Sources are unchanged; the destination appears only after verification.",
                       );
-                      const approveConversion = conversions.length > 0;
-                      const review = [
-                        ...plan.warnings,
-                        ...conversions.map(
-                          (track) =>
-                            `Output track #${track.output_index + 1}: ${actions[track.compatibility.action]} - ${track.compatibility.reason}`,
-                        ),
-                        ...(approveConversion
-                          ? [
-                              "Continuing authorizes the listed subtitle conversions (including possible styling loss) and timeline audio/video rendering.",
-                            ]
-                          : []),
-                      ];
-                      if (
-                        review.length &&
-                        !confirm(
-                          `Export review\n\n${review.join("\n\n")}\n\nContinue with export?`,
-                        )
-                      )
-                        return;
-                      void run("Starting export", async () => {
-                        const id = await call<string | null>("export_start", {
-                          project: p,
-                          approveConversion,
-                        });
-                        if (id) {
-                          notifyingExport.current = id;
-                          setNotice(
-                            "Export started. Sources are unchanged; the destination appears only after verification.",
-                          );
-                          await refreshJobs();
-                        }
-                      });
-                    }}
-                  >
-                    <Download size={17} />
-                    Choose destination & export
-                  </button>
-                  <section className="job-history">
-                    <h3>Export history</h3>
-                    <p>
-                      One supervised job at a time. Interrupted jobs never
-                      resume automatically.
-                    </p>
-                    {jobs.filter((j) => j.project_id === p.id).length === 0 && (
-                      <p className="inset-note">
-                        Your completed and failed exports will appear here.
-                      </p>
-                    )}
-                    {jobs
-                      .filter((j) => j.project_id === p.id)
-                      .map((j) => (
-                        <article className="job" key={j.id}>
+                      await refreshJobs();
+                    }
+                  });
+                }}
+              >
+                <Download size={17} />
+                Choose destination & export
+              </button>
+              <section className="job-history">
+                <h3>Export history</h3>
+                <p>
+                  One supervised job at a time. Interrupted jobs never resume
+                  automatically.
+                </p>
+                {jobs.filter((j) => j.project_id === p.id).length === 0 && (
+                  <p className="inset-note">
+                    Your completed and failed exports will appear here.
+                  </p>
+                )}
+                {jobs
+                  .filter((j) => j.project_id === p.id)
+                  .map((j) => (
+                    <article className="job" key={j.id}>
+                      <div className="job-top">
+                        <strong>{basename(j.destination)}</strong>
+                        <span className={`job-status ${j.status}`}>
+                          {j.status === "completed" && <Check size={13} />}{" "}
+                          {j.status}
+                        </span>
+                      </div>
+                      {["processing", "verifying", "queued"].includes(
+                        j.status,
+                      ) && (
+                        <>
+                          <progress
+                            max="100"
+                            value={j.progress?.percent ?? undefined}
+                            aria-label="Export progress"
+                          />
                           <div className="job-top">
-                            <strong>{basename(j.destination)}</strong>
-                            <span className={`job-status ${j.status}`}>
-                              {j.status === "completed" && <Check size={13} />}{" "}
-                              {j.status}
-                            </span>
-                          </div>
-                          {["processing", "verifying", "queued"].includes(
-                            j.status,
-                          ) && (
-                            <>
-                              <progress
-                                max="100"
-                                value={j.progress?.percent ?? undefined}
-                                aria-label="Export progress"
-                              />
-                              <div className="job-top">
-                                <small>
-                                  {j.progress
-                                    ? `${bytes(j.progress.bytes)} · ${time(j.progress.elapsed_ms)} elapsed · ${time(j.progress.processed_ms)} processed`
-                                    : "Starting media backend..."}
-                                </small>
-                                <button
-                                  onClick={() =>
-                                    void run("Cancelling export", () =>
-                                      call("export_cancel", { id: j.id }),
-                                    )
-                                  }
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </>
-                          )}
-                          {j.error && <p className="job-error">{j.error}</p>}
-                          {j.status === "completed" &&
-                            !!j.progress?.notices?.length && (
-                              <details className="job-adjustments" open>
-                                <summary>
-                                  {j.progress.notices.length} timeline
-                                  adjustments to fit video
-                                </summary>
-                                <ul>
-                                  {j.progress.notices.map((notice, index) => (
-                                    <li key={index}>{notice}</li>
-                                  ))}
-                                </ul>
-                              </details>
-                            )}
-                          {["failed", "interrupted", "cancelled"].includes(
-                            j.status,
-                          ) && (
+                            <small>
+                              {j.progress
+                                ? `${bytes(j.progress.bytes)} · ${time(j.progress.elapsed_ms)} elapsed · ${time(j.progress.processed_ms)} processed`
+                                : "Starting media backend..."}
+                            </small>
                             <button
-                              onClick={() => {
-                                if (
-                                  dirty &&
-                                  !confirm(
-                                    "Replace current edits with this job snapshot?",
-                                  )
+                              onClick={() =>
+                                void run("Cancelling export", () =>
+                                  call("export_cancel", { id: j.id }),
                                 )
-                                  return;
-                                void run(
-                                  "Restoring selected job settings",
-                                  async () => {
-                                    const snapshot = await call<Project>(
-                                      "job_project",
-                                      { id: j.id },
-                                    );
-                                    replace(snapshot);
-                                    setNotice(
-                                      "Job settings restored with source authorization. Relink missing sources if needed, validate, and choose a new destination.",
-                                    );
-                                  },
-                                );
-                              }}
+                              }
                             >
-                              Restore settings to retry
+                              Cancel
                             </button>
-                          )}
-                          <small>
-                            {j.created_at} · revision {j.sequence}
-                          </small>
-                        </article>
-                      ))}
-                  </section>
-                </Tabs.Content>
-              </>
-            )}
+                          </div>
+                        </>
+                      )}
+                      {j.error && <p className="job-error">{j.error}</p>}
+                      {j.status === "completed" &&
+                        !!j.progress?.notices?.length && (
+                          <details className="job-adjustments" open>
+                            <summary>
+                              {j.progress.notices.length} timeline adjustments
+                              to fit video
+                            </summary>
+                            <ul>
+                              {j.progress.notices.map((notice, index) => (
+                                <li key={index}>{notice}</li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+                      {["failed", "interrupted", "cancelled"].includes(
+                        j.status,
+                      ) && (
+                        <button
+                          onClick={() => {
+                            if (
+                              dirty &&
+                              !confirm(
+                                "Replace current edits with this job snapshot?",
+                              )
+                            )
+                              return;
+                            void run(
+                              "Restoring selected job settings",
+                              async () => {
+                                const snapshot = await call<Project>(
+                                  "job_project",
+                                  { id: j.id },
+                                );
+                                replace(snapshot);
+                                setNotice(
+                                  "Job settings restored with source authorization. Relink missing sources if needed, validate, and choose a new destination.",
+                                );
+                              },
+                            );
+                          }}
+                        >
+                          Restore settings to retry
+                        </button>
+                      )}
+                      <small>
+                        {j.created_at} · revision {j.sequence}
+                      </small>
+                    </article>
+                  ))}
+              </section>
+            </Tabs.Content>
           </section>
           {viewerTarget &&
             createPortal(
@@ -2392,102 +2512,6 @@ export default function App() {
               </>,
               viewerTarget,
             )}
-          {current && tab === "timeline" && (
-            <section
-              className="inspector-section selected-lane-inspector"
-              aria-label="Selected lane inspector"
-            >
-              <div className="inspector-title">
-                SELECTED {currentStream?.kind.toUpperCase()} LANE
-              </div>
-              <label>
-                Title
-                <input
-                  aria-label="Selected lane title"
-                  value={current.title}
-                  onChange={(e) =>
-                    patchTrack(current.id, { title: e.target.value })
-                  }
-                />
-              </label>
-              {(currentStream?.kind === "audio" ||
-                currentStream?.kind === "subtitle") && (
-                <label>
-                  Language
-                  <input
-                    aria-label="Selected lane language"
-                    list="languages"
-                    maxLength={3}
-                    value={current.language}
-                    onChange={(e) =>
-                      patchTrack(current.id, {
-                        language: e.target.value.toLowerCase(),
-                      })
-                    }
-                  />
-                </label>
-              )}
-              {currentStream?.kind === "audio" && (
-                <label>
-                  Output role
-                  <select
-                    aria-label="Selected lane output role"
-                    value={current.audio_role ?? "separate"}
-                    onChange={(e) =>
-                      patchTrack(current.id, {
-                        audio_role: e.target.value as "mix" | "separate",
-                      })
-                    }
-                  >
-                    <option value="mix">Mix into main audio</option>
-                    <option value="separate">Separate language track</option>
-                  </select>
-                </label>
-              )}
-              <small>
-                Position: {current.offset_ms} ms. Drag the clip or edit its
-                timeline offset. Drag either clip edge to trim; extend an edge
-                to restore source material.
-              </small>
-              {((current.trim_start_ms ?? 0) > 0 ||
-                current.trim_end_ms != null) && (
-                <button
-                  className="secondary"
-                  onClick={() =>
-                    patchTrack(current.id, {
-                      trim_start_ms: 0,
-                      trim_end_ms: null,
-                    })
-                  }
-                >
-                  Reset clip trims
-                </button>
-              )}
-            </section>
-          )}
-          <div className="inspector-section">
-            <div className="inspector-title">OUTPUT CONTAINER</div>
-            <div className="container-options">
-              {(["matroska", "mp4", "m4v"] as const).map((c) => (
-                <button
-                  key={c}
-                  aria-pressed={p.container === c}
-                  onClick={() =>
-                    edit((d) => {
-                      d.container = c;
-                    })
-                  }
-                >
-                  {c === "matroska" ? "MKV" : c.toUpperCase()}
-                </button>
-              ))}
-            </div>
-            <p>
-              {p.container === "matroska"
-                ? "Flexible stream preservation."
-                : "Broad compatibility. Codec restrictions apply."}
-            </p>
-          </div>
           <div className="inspector-section">
             <div className="inspector-title">AT A GLANCE</div>
             <dl className="properties">
@@ -2637,6 +2661,126 @@ export default function App() {
             <Moon size={17} />
             <span>Stored locally in SQLite</span>
           </div>
+          <h3>
+            Files & folders{" "}
+            <StudioInfo
+              title="Files and folders"
+              text="Defaults to your operating system's Videos folder. Save an existing folder to use it immediately for media, project, artwork, subtitle and export file dialogs. Unavailable folders fall back to Videos. Existing files, application caches and model storage are not moved."
+            />
+          </h3>
+          <label>
+            Default folder
+            <input
+              value={defaultFolder}
+              placeholder="Your Videos folder"
+              spellCheck={false}
+              onChange={(event) => {
+                setDefaultFolder(event.target.value);
+                setFolderError("");
+              }}
+            />
+          </label>
+          <div className="subtitle-editor-toolbar">
+            <button
+              disabled={!desktop || !!busy}
+              onClick={() =>
+                void run("Choosing default folder", async () => {
+                  try {
+                    const folder = await call<string | null>(
+                      "settings_choose_folder",
+                    );
+                    if (folder) setDefaultFolder(folder);
+                    setFolderError("");
+                  } catch (e) {
+                    setFolderError(e instanceof Error ? e.message : String(e));
+                  }
+                })
+              }
+            >
+              Browse folder
+            </button>
+            <button
+              disabled={
+                !desktop ||
+                !!busy ||
+                !defaultFolder ||
+                defaultFolder === savedFolder
+              }
+              onClick={() =>
+                void run("Saving default folder", async () => {
+                  try {
+                    await call("settings_update", {
+                      key: "default_folder",
+                      value: defaultFolder,
+                    });
+                    setSavedFolder(defaultFolder);
+                    setNotice(
+                      "Default folder saved. File dialogs use it immediately.",
+                    );
+                    setSettings(false);
+                  } catch (e) {
+                    setFolderError(e instanceof Error ? e.message : String(e));
+                  }
+                })
+              }
+            >
+              Save default folder
+            </button>
+            <button
+              disabled={!desktop || !!busy}
+              onClick={() =>
+                void run("Resetting default folder", async () => {
+                  try {
+                    await call("settings_update", {
+                      key: "default_folder",
+                      value: null,
+                    });
+                    const result = await call<{ default_folder: string }>(
+                      "settings_get",
+                    );
+                    setSavedFolder(result.default_folder);
+                    setDefaultFolder(result.default_folder);
+                    setFolderError("");
+                  } catch (e) {
+                    setFolderError(e instanceof Error ? e.message : String(e));
+                  }
+                })
+              }
+            >
+              Reset to Videos
+            </button>
+          </div>
+          {folderError && (
+            <p role="alert" className="error">
+              {folderError}
+            </p>
+          )}
+          <label>
+            Default image format
+            <select
+              value={imageFormat}
+              disabled={!desktop || !!busy}
+              onChange={(event) => {
+                const format = event.target.value;
+                void run("Saving image format", async () => {
+                  try {
+                    await call("settings_update", {
+                      key: "image_format",
+                      value: format,
+                    });
+                    setImageFormat(format);
+                    setFolderError("");
+                  } catch (e) {
+                    setFolderError(e instanceof Error ? e.message : String(e));
+                  }
+                });
+              }}
+            >
+              <option value="png">PNG</option>
+              <option value="jpeg">JPEG</option>
+              <option value="webp">WebP</option>
+            </select>
+          </label>
           <h3>Required components</h3>
           <p>
             {dependencies.checking
@@ -2705,19 +2849,6 @@ export default function App() {
           </p>
         </dialog>
       )}
-      <SubtitleEditor
-        videoUrl={
-          !previewError && previewUrl?.path === source?.path
-            ? previewUrl?.url
-            : undefined
-        }
-        onOpen={() => video.current?.pause()}
-        onAdd={(paths) => addSubtitles(paths, true)}
-        projectBusy={!!busy}
-        sources={p.assets
-          .filter((a) => /\.srt$/i.test(a.path))
-          .map((a) => ({ path: a.path, label: basename(a.path) }))}
-      />
     </Tabs.Root>
   );
 }

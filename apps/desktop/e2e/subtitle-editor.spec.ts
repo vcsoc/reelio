@@ -142,7 +142,7 @@ test("SRT editing creates, splits, merges, undoes, saves a copy and recovers dra
   page,
 }) => {
   const editor = page.getByRole("dialog", {
-    name: "SRT subtitle editor",
+    name: "Subtitle Studio",
     exact: true,
   });
   await editor.getByRole("button", { name: "New SRT", exact: true }).click();
@@ -229,7 +229,7 @@ test("translation is reviewed before applying and preserves times with undo", as
   page,
 }) => {
   const editor = page.getByRole("dialog", {
-    name: "SRT subtitle editor",
+    name: "Subtitle Studio",
     exact: true,
   });
   await editor.getByRole("button", { name: "Open SRT", exact: true }).click();
@@ -296,7 +296,7 @@ test("existing destinations and discarded drafts do not lose original text", asy
   page,
 }) => {
   const editor = page.getByRole("dialog", {
-    name: "SRT subtitle editor",
+    name: "Subtitle Studio",
     exact: true,
   });
   await editor.getByRole("button", { name: "Open SRT", exact: true }).click();

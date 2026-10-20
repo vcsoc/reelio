@@ -14,6 +14,7 @@ import {
   LockKeyhole,
   UnlockKeyhole,
   Info,
+  Save,
 } from "lucide-react";
 import { sizeCrop } from "./imageGeometry";
 import { cropPresets } from "./cropPresets";
@@ -76,6 +77,8 @@ export function ArtworkPanel({
   const [lockAspect, setLockAspect] = useState(true);
   const [cropRatio, setCropRatio] = useState<number>();
   const [applyFeedback, setApplyFeedback] = useState("");
+  const [saveFeedback, setSaveFeedback] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [dragCrop, setDragCrop] = useState<ImageEdits["crop"]>(null);
   const drag = useRef<{ x: number; y: number } | undefined>(undefined);
   const [showSources, setShowSources] = useState(false);
@@ -103,6 +106,8 @@ export function ArtworkPanel({
   }, [original]);
   const edits = history.current;
   function choose(image: Artwork, keepSources = false) {
+    setSaveError("");
+    setSaveFeedback("");
     setShowSources(keepSources);
     setOriginal(image);
     setHistory({ past: [], current: defaults(), future: [] });
@@ -113,6 +118,9 @@ export function ArtworkPanel({
   useEffect(() => {
     if (incoming) choose(incoming);
   }, [incoming]);
+  useEffect(() => {
+    if (!original && project.artwork) choose(project.artwork);
+  }, [project.artwork, original]);
   useEffect(() => {
     if (!original) return;
     let active = true;
@@ -135,6 +143,8 @@ export function ArtworkPanel({
     };
   }, [original, edits]);
   function change(patch: Partial<ImageEdits>) {
+    setSaveError("");
+    setSaveFeedback("");
     setApplyFeedback("");
     setHistory((h) => {
       const current = { ...h.current, ...patch };
@@ -676,9 +686,34 @@ export function ArtworkPanel({
             )}
           </div>
           <figure>
-            <figcaption>
+            <figcaption className="artwork-preview-caption">
               Live preview{" "}
               <Hint text="Updates locally before painting; export-quality JPEG is verified separately before Apply becomes available. Original files are never changed." />
+              <button
+                type="button"
+                className="artwork-save-preview"
+                aria-label="Save preview image"
+                title="Save preview image (format selected in Settings)"
+                disabled={busy || !ready}
+                onClick={() => {
+                  if (!ready || !rendered) return;
+                  setSaveFeedback("");
+                  setSaveError("");
+                  void run("Saving preview image", async () => {
+                    try {
+                      const path = await call<string | null>(
+                        "artwork_save_copy",
+                        { artwork: rendered.image },
+                      );
+                      if (path) setSaveFeedback(`Preview image saved: ${path}`);
+                    } catch (e) {
+                      setSaveError(e instanceof Error ? e.message : String(e));
+                    }
+                  });
+                }}
+              >
+                <Save size={15} />
+              </button>
             </figcaption>
             <div className="artwork-image-area">
               <LiveArtworkPreview
@@ -686,6 +721,16 @@ export function ArtworkPanel({
                 edits={{ ...edits, crop }}
               />
             </div>
+            {saveError && (
+              <p className="error" role="alert">
+                {saveError}
+              </p>
+            )}
+            {saveFeedback && (
+              <p role="status" className="artwork-save-feedback">
+                {saveFeedback}
+              </p>
+            )}
           </figure>
         </div>
       ) : (

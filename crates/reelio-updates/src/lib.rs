@@ -84,6 +84,7 @@ impl Version {
 pub enum Target {
     ArchX64,
     DebianX64,
+    AppImageX64,
     WindowsX64,
     MacX64,
     MacArm64,
@@ -93,6 +94,9 @@ impl Target {
     pub fn current() -> Self {
         match (std::env::consts::OS, std::env::consts::ARCH) {
             ("linux", "x86_64") => {
+                if std::env::var_os("APPIMAGE").is_some_and(|path| !path.is_empty()) {
+                    return Self::AppImageX64;
+                }
                 let text = std::fs::File::open("/etc/os-release")
                     .ok()
                     .and_then(|file| limited(file, 16384).ok())
@@ -134,6 +138,12 @@ impl Target {
                     return None;
                 }
                 version
+            }
+            Self::AppImageX64 => {
+                if name != format!("Reelio_{}_amd64.AppImage", tag.core()) {
+                    return None;
+                }
+                tag
             }
             Self::DebianX64 => {
                 if name != format!("Reelio_{}_amd64.deb", tag.core()) {

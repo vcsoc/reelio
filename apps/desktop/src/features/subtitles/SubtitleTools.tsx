@@ -9,7 +9,7 @@ import {
 } from "../../types";
 import { ResourceSearch, type Run } from "../resources/ResourceSearch";
 import type { SubtitleCue } from "./preview";
-import { openSubtitleEditor } from "./SubtitleEditor";
+import { StudioInfo } from "./StudioInfo";
 const cueTime = (ms: number) =>
   `${time(ms)}.${String(Math.round(ms) % 1000).padStart(3, "0")}`;
 export interface TestedSubtitle {
@@ -60,14 +60,13 @@ export function SubtitleTools({
     tested.cues.some((c) => c.end > duration + 500);
   return (
     <section className="subtitle-tools">
-      <button
-        type="button"
-        className="primary"
-        disabled={busy}
-        onClick={openSubtitleEditor}
-      >
-        Create / edit / translate SRT
-      </button>
+      <h3>
+        Video subtitle preview{" "}
+        <StudioInfo
+          title="Video subtitle preview"
+          text="Testing converts a temporary preview to WebVTT and overlays it on the source video. Original files stay unchanged; styling and positioning may differ. Export conversion needs separate approval. Review release, frame rate, language and synchronization."
+        />
+      </h3>
       <ResourceSearch
         kind="subtitles"
         title={project.metadata.title || project.name}
@@ -113,7 +112,13 @@ export function SubtitleTools({
       </div>
       {files.length > 0 && (
         <div className="subtitle-downloads">
-          <h3>Validated subtitle downloads</h3>
+          <h3>
+            Validated subtitle downloads{" "}
+            <StudioInfo
+              title="Validated subtitle downloads"
+              text="Downloaded files are retained locally. Explicitly add and test a selected file before exporting it."
+            />
+          </h3>
           {files.map((file) => (
             <div className="resource-search-row" key={file.path}>
               <span>{file.name}</span>
@@ -130,23 +135,21 @@ export function SubtitleTools({
           ))}
         </div>
       )}
-      <p className="muted">
-        Testing converts a temporary preview to WebVTT and displays it over the
-        source video. Original subtitle files stay unchanged; styling and
-        positioning may differ. Export conversion still requires separate
-        approval. Matching the release, frame rate, language, and
-        synchronization requires your review.
-      </p>
       {tested && (
         <section className="subtitle-cues">
           <div className="section-heading">
             <div>
-              <h3>Subtitle test: {tested.cues.length} cues</h3>
-              <p>
+              <h3>
+                Subtitle test: {tested.cues.length} cues{" "}
+                <StudioInfo
+                  title="Subtitle test"
+                  text="Play the source preview to check synchronization. The table shows the first 100 cues; video preview uses the full validated cue list."
+                />
+              </h3>
+              <span>
                 First cue {cueTime(tested.cues[0].start)} - last cue{" "}
-                {cueTime(tested.cues[tested.cues.length - 1].end)}. Play the
-                source preview to check synchronization.
-              </p>
+                {cueTime(tested.cues[tested.cues.length - 1].end)}.
+              </span>
             </div>
             <button className="secondary" onClick={onClear}>
               Clear subtitle preview
@@ -187,12 +190,6 @@ export function SubtitleTools({
               </tbody>
             </table>
           </div>
-          {tested.cues.length > 100 && (
-            <small>
-              Showing the first 100 cues. The video preview uses the full
-              validated cue list.
-            </small>
-          )}
         </section>
       )}
     </section>

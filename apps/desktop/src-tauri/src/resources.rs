@@ -34,6 +34,7 @@ pub async fn choose_artwork(
             .dialog()
             .file()
             .set_title("Choose a poster or cover")
+            .set_directory(super::preferences::default_folder(&app, &state)?)
             .add_filter("Cover image", &["jpg", "jpeg", "png", "webp", "avif"])
             .blocking_pick_file()
         else {
@@ -129,6 +130,43 @@ pub async fn poster_image(
     .await
 }
 #[tauri::command]
+pub async fn artwork_save_copy(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    artwork: Artwork,
+) -> Result<Option<String>, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        artwork::jpeg_bytes(&artwork)?;
+        let value = state
+            .storage
+            .lock()
+            .map_err(|_| "Storage lock failed")?
+            .setting("image_format")?
+            .unwrap_or(serde_json::json!("png"));
+        let format: artwork::ImageFileFormat = serde_json::from_value(value)
+            .map_err(|_| "Invalid default image format; choose PNG, JPEG or WebP in Settings")?;
+        let Some(file) = app
+            .dialog()
+            .file()
+            .set_title("Save preview image to a new file")
+            .set_directory(super::preferences::default_folder(&app, &state)?)
+            .set_file_name(format!("cover-preview.{}", format.extension()))
+            .add_filter("Preview image", &[format.extension()])
+            .blocking_save_file()
+        else {
+            return Ok(None);
+        };
+        let mut path = file.into_path().map_err(|e| e.to_string())?;
+        if path.extension().is_none() {
+            path.set_extension(format.extension());
+        }
+        artwork::save_copy(&artwork, &path, format)?;
+        Ok(Some(path.to_string_lossy().into_owned()))
+    })
+    .await
+}
+#[tauri::command]
 pub async fn artwork_edit(artwork: Artwork, edits: artwork::ImageEdits) -> Result<Artwork, String> {
     blocking(move || artwork::edit(&artwork, &edits)).await
 }
@@ -143,6 +181,7 @@ pub async fn choose_subtitles(
             .dialog()
             .file()
             .set_title("Choose subtitles to test")
+            .set_directory(super::preferences::default_folder(&app, &s)?)
             .add_filter("Text subtitles", &["srt", "ass", "ssa", "vtt"])
             .blocking_pick_files()
             .unwrap_or_default();

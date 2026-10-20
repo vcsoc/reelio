@@ -1,5 +1,15 @@
 # Packaging And Release Qualification
 
+## Password-Free User Updates
+
+Use `python3 scripts/install-user.py` after verifying a Linux release build, or pass an explicitly verified executable/AppImage path. It installs immutable, checksummed version slots under `~/.local/opt/reelio`, atomically switches `~/.local/bin/reelio`, and creates a per-user desktop entry. Old slots remain available for rollback; unrelated launchers/desktop entries are refused rather than overwritten. It never terminates running work, edits sudo/Polkit rules, or needs an administrator password. Close and reopen the app when safe. The system Arch package can remain as a dependency-providing fallback; system dependency changes still require normal authorization.
+
+## AppImage
+
+The **AppImage Release** workflow builds x86_64 AppImages on Ubuntu 22.04, checks the frontend and generated image formats, extracts and starts the actual AppImage under Xvfb/DBus, and uploads `reelio-appimage-x86_64` with SHA256SUMS. AppImages are also included in future Linux release-workflow builds. Run `gh workflow run appimage-release.yml --ref main` to produce a candidate without publishing it automatically.
+
+For a local candidate, run `npm run tauri build -- --bundles appimage` in `apps/desktop`; output is under `target/release/bundle/appimage`. Verify SHA256SUMS, mark the downloaded AppImage executable and run it as a normal user. If FUSE is unavailable, use `--appimage-extract-and-run`. FFmpeg/FFprobe and media runtime requirements remain external; broader cross-distribution playback is not qualified merely by an AppImage startup smoke test. Packages remain unsigned developer previews.
+
 ## Arch / Omarchy Package
 
 From the repository root:

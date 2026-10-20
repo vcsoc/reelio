@@ -1,3 +1,4 @@
+mod preferences;
 mod preview;
 mod resources;
 mod subtitles;
@@ -126,11 +127,16 @@ async fn choose_media(
     let s = state.inner().clone();
     blocking(move || {
         let files = if folder {
-            app.dialog().file().blocking_pick_folder().map(|f| vec![f])
+            app.dialog()
+                .file()
+                .set_directory(preferences::default_folder(&app, &s)?)
+                .blocking_pick_folder()
+                .map(|f| vec![f])
         } else {
             app.dialog()
                 .file()
                 .set_title("Open media or add tracks")
+                .set_directory(preferences::default_folder(&app, &s)?)
                 .blocking_pick_files()
         };
         let mut paths = vec![];
@@ -186,7 +192,7 @@ async fn project_open(
 ) -> Result<Option<Project>, String> {
     let s = state.inner().clone();
     blocking(move||{
-        let Some(f)=app.dialog().file().add_filter("Reelio project",&["reelio"]).blocking_pick_file() else{return Ok(None)};
+        let Some(f)=app.dialog().file().set_directory(preferences::default_folder(&app,&s)?).add_filter("Reelio project",&["reelio"]).blocking_pick_file() else{return Ok(None)};
         let path=f.into_path().map_err(|e|e.to_string())?;let p=s.open_project(&path)?;
         let description=p.assets.iter().map(|a|a.path.to_string_lossy().into_owned()).collect::<Vec<_>>().join("\n");
         if !p.assets.is_empty() && !app.dialog().message(format!("This project references these local sources:\n\n{description}\n\nAllow Reelio to inspect these files? Missing sources can be relinked in Media information.")).title("Authorize project sources").kind(MessageDialogKind::Warning).buttons(MessageDialogButtons::YesNo).blocking_show(){return Err("Project source access was not authorized".into());}
@@ -205,6 +211,7 @@ async fn project_save(
         let Some(f) = app
             .dialog()
             .file()
+            .set_directory(preferences::default_folder(&app, &s)?)
             .set_file_name("Untitled.reelio")
             .add_filter("Reelio project", &["reelio"])
             .blocking_save_file()
@@ -265,6 +272,7 @@ async fn export_start(
             .dialog()
             .file()
             .set_title("Export to a NEW file (never overwrites)")
+            .set_directory(preferences::default_folder(&app, &s)?)
             .set_file_name(filename)
             .blocking_save_file()
         else {
@@ -360,35 +368,51 @@ async fn job_project(
     }).await
 }
 #[tauri::command]
-fn settings_get(state: State<'_, AppState>) -> Result<Value, String> {
-    let db = state.storage.lock().map_err(|_| "Storage lock failed")?;
-    Ok(
-        json!({"theme":db.setting("theme")?.unwrap_or(json!("dark")),"recents":db.recents()?,"backend":db.setting("backend")?}),
-    )
+async fn settings_get(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
+    let state = state.inner().clone();
+    blocking(move||{
+        let folder=preferences::default_folder(&app,&state)?;
+        let db = state.storage.lock().map_err(|_| "Storage lock failed")?;
+        Ok(json!({"theme":db.setting("theme")?.unwrap_or(json!("dark")),"recents":db.recents()?,"backend":db.setting("backend")?,"default_folder":folder.to_string_lossy(),"image_format":db.setting("image_format")?.unwrap_or(json!("png"))}))
+    }).await
 }
 #[tauri::command]
-fn settings_update(state: State<'_, AppState>, key: String, value: Value) -> Result<(), String> {
-    match key.as_str() {
-        "theme" => {
-            if !["light", "dark", "system"].contains(&value.as_str().unwrap_or("")) {
-                return Err("Invalid theme".into());
-            }
-        }
-        "backend" => {
-            for k in ["ffmpeg", "ffprobe"] {
-                let p = value[k].as_str().ok_or("Missing backend path")?;
-                if !Path::new(p).is_absolute() || !Path::new(p).is_file() {
-                    return Err("Backend executables must be existing absolute paths".into());
+async fn settings_update(
+    state: State<'_, AppState>,
+    key: String,
+    value: Value,
+) -> Result<(), String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        match key.as_str() {
+            "image_format" => {
+                if !["png", "jpeg", "webp"].contains(&value.as_str().unwrap_or("")) {
+                    return Err("Choose PNG, JPEG or WebP".into());
                 }
             }
+            "default_folder" => preferences::validate_folder(&value)?,
+            "theme" => {
+                if !["light", "dark", "system"].contains(&value.as_str().unwrap_or("")) {
+                    return Err("Invalid theme".into());
+                }
+            }
+            "backend" => {
+                for k in ["ffmpeg", "ffprobe"] {
+                    let p = value[k].as_str().ok_or("Missing backend path")?;
+                    if !Path::new(p).is_absolute() || !Path::new(p).is_file() {
+                        return Err("Backend executables must be existing absolute paths".into());
+                    }
+                }
+            }
+            _ => return Err("Unknown setting".into()),
         }
-        _ => return Err("Unknown setting".into()),
-    }
-    state
-        .storage
-        .lock()
-        .map_err(|_| "Storage lock failed")?
-        .set_setting(&key, &value)
+        state
+            .storage
+            .lock()
+            .map_err(|_| "Storage lock failed")?
+            .set_setting(&key, &value)
+    })
+    .await
 }
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -487,10 +511,12 @@ pub fn run() {
                 jobs_list,
                 job_project,
                 settings_get,
+                preferences::settings_choose_folder,
                 settings_update,
                 resources::choose_artwork,
                 resources::artwork_import,
                 resources::artwork_edit,
+                resources::artwork_save_copy,
                 resources::poster_search,
                 resources::poster_image,
                 resources::choose_subtitles,

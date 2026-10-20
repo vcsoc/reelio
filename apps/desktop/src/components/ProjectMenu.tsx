@@ -159,7 +159,7 @@ export function ProjectMenu({ actions }: { actions: Action[] }) {
               openSubtitleEditor();
             }}
           >
-            SRT subtitle editor
+            Subtitle Studio
           </button>
           <button
             type="button"

@@ -3321,6 +3321,7 @@ dependencies = [
  "image",
  "reelio-domain",
  "serde",
+ "tempfile",
 ]
 
 [[package]]
@@ -3339,6 +3340,7 @@ dependencies = [
  "tauri-codegen",
  "tauri-plugin-dialog",
  "tauri-plugin-single-instance",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
  "uuid",
