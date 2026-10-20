@@ -24,6 +24,12 @@ This file maps the supplied product specification to the actual developer previe
 | Security/observability | Local source authorization, minimal Tauri capability, restrictive CSP, no shell commands, file-only protocols, demuxer allowlist, bounded probe output/timeout, source fingerprint rechecks, temporary outputs, tracing | Dedicated sandbox, rotated file logs, diagnostic redaction/bundles, dependency license signoff, secure credentials when providers exist, full threat-model validation |
 | Distribution | Native icon assets, Tauri configuration, Linux package build, native Windows x64 NSIS build with PE/version/checksum checks, cross-platform CI/release definition; manual stable GitHub version checks with platform-matching, exact-size/SHA-256 verified no-clobber downloads | Windows interactive installer/runtime qualification and remaining cross-platform CI gaps, verified macOS native builds, signing/notarization, automated/signed installation and rollback policy, release QA, legal review and signing secrets; local builds/commits are not GitHub publications |
 
+## Published Linux 0.2.0-3
+
+The GitHub release contains the Arch package, Ubuntu-22.04-built x86_64 AppImage and SHA256SUMS from source `fb529c5`. Published asset sizes and SHA256 digests match the verified local candidates. AppImage startup on Ubuntu 22.04 and Arch reports backend/playback available with zero missing components. The installed per-user native executable matches the verified Arch package payload; existing running work is not forcibly restarted. Routine updates use the unprivileged installer, without sudo/Polkit changes.
+
+Final local workspace checks: 127 Rust tests pass (six explicit ignores), alongside the desktop/native, frontend and browser checks documented for this work. The broader CI still fails existing Ubuntu FFmpeg audio/timing fixtures and Windows/macOS relative-project-path fixtures. These unsigned previews do not close the remaining production, cross-platform playback or legal-review gaps.
+
 ## Next Acceptance Milestones
 
 1. Harden and qualify the existing import-to-export workflow on all three operating systems, including large files, disk full, race conditions, crash recovery, language/disposition edge cases, malformed inputs and native UI automation.

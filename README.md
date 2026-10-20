@@ -6,6 +6,10 @@ A local-first desktop media container editor built with Rust, Tauri 2, React, Ty
 
 ![Reelio workspace showing the media pool, video preview, chapter markers, subtitle timeline and cover art](docs/images/reelio-workspace.png)
 
+## Downloads
+
+[Reelio 0.2.0-3](https://github.com/vcsoc/reelio/releases/tag/v0.2.0-3) provides an x86_64 AppImage, an Arch/Omarchy package and SHA256SUMS. The AppImage bundles GStreamer; FFmpeg/FFprobe remain external. Native startup and runtime checks pass on Ubuntu 22.04 and Arch; broader playback qualification and signing remain open. See [packaging](docs/packaging.md) for password-free per-user installation, dependencies and FUSE-free execution.
+
 ## Run
 
 Install Node.js 22+, Rust stable, and a maintained FFmpeg distribution with FFprobe on your PATH. FFmpeg is **not bundled**. The Arch/Omarchy package installs required media, playback and HTTPS components through pacman; supported Linux installations also offer an authorized in-app component repair. For source builds on Linux, install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) (GTK 3, WebKitGTK 4.1, librsvg and build tools). Linux AV1 playback also requires a supported GStreamer AV1 decoder; the Arch package installs `gst-plugin-dav1d`, and Debian/Ubuntu repair includes the bad-plugin decoder package. Windows requires MSVC build tools and WebView2; macOS requires Xcode command-line tools.
@@ -81,13 +85,13 @@ The **Subtitles** workspace includes an OpenSubtitles-focused search browser, co
 
 ## Subtitle Studio
 
-Open **Subtitle Studio** in the toolbar or Project menu. The studio occupies the main lower timeline workspace, not the right inspector or a modal. Create/open UTF-8 SRT files, edit cue text/timing, split/merge, shift, find/replace and save non-overwriting copies. Search/import and source-video testing are grouped inside the studio. Information icons beside headings reveal help without permanent explanatory paragraphs; unsaved drafts survive workspace navigation and can be explicitly discarded. Optional local Ollama model downloads, cancellable translation and side-by-side review preserve cue IDs/timestamps. Models require an existing trusted local Ollama service; no cloud inference is configured by Reelio. See [subtitle editor](docs/subtitle-editor.md) for workflow, recovery, limits and qualification. The underlying editor and local translation capabilities are included in 0.2.0-2; the docked studio layout is an unreleased source update.
+Open **Subtitle Studio** in the toolbar or Project menu. The studio occupies the main lower timeline workspace, not the right inspector or a modal. Create/open UTF-8 SRT files, edit cue text/timing, split/merge, shift, find/replace and save non-overwriting copies. Search/import and source-video testing are grouped inside the studio. Information icons beside headings reveal help without permanent explanatory paragraphs; unsaved drafts survive workspace navigation and can be explicitly discarded. Optional local Ollama model downloads, cancellable translation and side-by-side review preserve cue IDs/timestamps. Models require an existing trusted local Ollama service; no cloud inference is configured by Reelio. See [subtitle editor](docs/subtitle-editor.md) for workflow, recovery, limits and qualification. The docked studio layout is included in the published 0.2.0-3 Linux preview.
 
 ## Default Folder
 
 **Settings > Files & folders > Default folder** starts with your operating system's Videos folder. Browse or enter an existing absolute folder and save it, or use **Reset to Videos**. The preference persists locally and applies immediately to media, project, artwork, subtitle and export dialogs. Existing files, application caches and model storage are not moved. Missing custom folders fall back to Videos.
 
-The folder preference is an unreleased source update, not yet included in the published 0.2.0-2 packages.
+The folder and image-format preferences are included in the published 0.2.0-3 Linux preview.
 
 ## Tests And Build
 
