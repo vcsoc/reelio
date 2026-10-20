@@ -36,7 +36,8 @@ jobs:
         run: |
           npm ci
           npm test
-          npm run tauri build -- --bundles appimage
+          python3 ../../scripts/prepare-appimage.py
+          npm run tauri build -- --bundles appimage --config ../../target/appimage-bundle.json
       - name: Smoke-test the extracted AppImage on a native display
         shell: bash
         run: |
@@ -55,8 +56,7 @@ jobs:
           set -e
           cat startup.log
           test "$result" -eq 124
-          grep -q 'Runtime component check completed' startup.log
-          grep -q 'missing_count.*0' startup.log
+          python3 ../../scripts/check-appimage-smoke.py startup.log
       - name: Produce release checksum manifest
         run: python3 scripts/collect-release-assets.py target/release/bundle/appimage target/appimage-release
       - uses: actions/upload-artifact@v4

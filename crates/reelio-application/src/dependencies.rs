@@ -2,11 +2,19 @@ use reelio_ffmpeg::{Ffmpeg, MediaBackend};
 use serde::{Deserialize, Serialize};
 use std::{
     io::Read,
+    path::PathBuf,
     process::{Command, Stdio},
     sync::atomic::{AtomicBool, Ordering},
     thread,
     time::{Duration, Instant},
 };
+
+fn bundled_gstreamer_tool(appdir: Option<PathBuf>) -> PathBuf {
+    appdir
+        .filter(|root| root.is_absolute())
+        .map(|root| root.join("usr/bin/gst-inspect-1.0"))
+        .unwrap_or_else(|| PathBuf::from("/usr/bin/gst-inspect-1.0"))
+}
 
 const PREVIEW_ELEMENTS: &[&str] = &[
     "autoaudiosink",
@@ -100,7 +108,9 @@ fn current_plan() -> Option<InstallPlan> {
     }
 }
 fn inspect_element(name: &str) -> bool {
-    let mut child = match Command::new("/usr/bin/gst-inspect-1.0")
+    // AppImage plugins and diagnostics must use the same bundled GStreamer ABI.
+    let tool = bundled_gstreamer_tool(std::env::var_os("APPDIR").map(PathBuf::from));
+    let mut child = match Command::new(tool)
         .args(["--exists", name])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -266,6 +276,26 @@ impl DependencyService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn bundled_inspection_uses_package_tool_without_falling_back_to_host_abi() {
+        let root = tempfile::tempdir().unwrap();
+        let bin = root.path().join("usr/bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let tool = bin.join("gst-inspect-1.0");
+        std::fs::write(&tool, b"fixture").unwrap();
+        assert_eq!(
+            bundled_gstreamer_tool(Some(root.path().to_path_buf())),
+            tool
+        );
+        assert_eq!(
+            bundled_gstreamer_tool(Some(PathBuf::from("relative"))),
+            PathBuf::from("/usr/bin/gst-inspect-1.0")
+        );
+        assert_eq!(
+            bundled_gstreamer_tool(None),
+            PathBuf::from("/usr/bin/gst-inspect-1.0")
+        );
+    }
     #[test]
     fn omarchy_uses_a_fixed_arch_package_allowlist() {
         let plan = install_plan("ID=omarchy\nID_LIKE=\"arch\"\n").unwrap();

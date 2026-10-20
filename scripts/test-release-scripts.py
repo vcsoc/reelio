@@ -10,6 +10,15 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_smoke_check_rejects_ansi_color_zero_and_missing_playback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "startup.log"
+            command = [sys.executable, ROOT / "scripts/check-appimage-smoke.py", log]
+            log.write_text("Runtime component check completed preview_available=false backend_available=true missing_count=\\x1b[0m11".replace("\\x1b", "\x1b"))
+            self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0)
+            log.write_text("Runtime component check completed preview_available=true backend_available=true missing_count=0")
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
+
     def test_consistent_versions(self):
         result = subprocess.run([sys.executable, ROOT / "scripts/check-release-version.py"], capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)

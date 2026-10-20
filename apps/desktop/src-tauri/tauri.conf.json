@@ -39,6 +39,10 @@
     "shortDescription": "Local-first media container editor",
     "category": "Video",
     "linux": {
+      "appimage": {
+        "bundleMediaFramework": true,
+        "files": { "/usr/bin/gst-inspect-1.0": "/usr/bin/gst-inspect-1.0" }
+      },
       "deb": {
         "depends": [
           "ca-certificates",
